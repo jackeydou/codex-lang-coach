@@ -1,0 +1,10 @@
+node_modules/
+dist/
+apps/*/dist/
+packages/*/dist/
+.DS_Store
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.language-coach/
+coverage/

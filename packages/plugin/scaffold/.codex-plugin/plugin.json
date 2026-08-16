@@ -1,0 +1,35 @@
+{
+  "name": "language-coach",
+  "version": "0.1.0+codex.20260816190145",
+  "description": "Turn everyday Codex messages into private, reusable language-learning notes.",
+  "author": {
+    "name": "Language Coach contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "language-learning",
+    "writing",
+    "coaching",
+    "reflection"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Language Coach",
+    "shortDescription": "Learn from the language you use every day.",
+    "longDescription": "Language Coach reviews each message before Codex handles the task, saves only structured learning notes, and turns recurring corrections into a private local progress journal.",
+    "developerName": "Language Coach contributors",
+    "category": "Education",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Show me the language patterns I keep repeating.",
+      "Open my private language-learning dashboard.",
+      "Change my native and target languages."
+    ],
+    "brandColor": "#202020"
+  },
+  "mcpServers": "./.mcp.json"
+}

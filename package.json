@@ -1,0 +1,28 @@
+{
+  "name": "language-coach-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "build": "pnpm build:plugin",
+    "build:plugin": "pnpm build:workspace && node scripts/build-plugin.mjs",
+    "build:workspace": "pnpm -r build",
+    "check": "pnpm -r check",
+    "dashboard": "node dist/language-coach/mcp/server.mjs --dashboard",
+    "dev": "pnpm --parallel --filter @language-coach/server --filter @language-coach/dashboard dev",
+    "test": "pnpm -r test"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

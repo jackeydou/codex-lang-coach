@@ -1,0 +1,17 @@
+{
+  "name": "@language-coach/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --minify --platform=node --format=esm --target=node22 --outfile=dist/server.mjs",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts --dashboard",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@language-coach/core": "workspace:*",
+    "@language-coach/mcp": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  }
+}

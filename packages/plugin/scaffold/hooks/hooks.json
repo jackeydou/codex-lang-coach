@@ -1,0 +1,28 @@
+{
+  "description": "Inject language coaching and selectively save useful learning notes.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hooks/user-prompt-submit.mjs\"",
+            "statusMessage": "Loading your language coach"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/hooks/stop.mjs\"",
+            "statusMessage": "Saving your language note",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
