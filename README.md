@@ -52,6 +52,17 @@ The generated `dist/language-coach` directory is the only installable artifact. 
 - Node.js 22.5 or newer
 - pnpm 11 or newer
 
+## Install from a release
+
+Download and extract the ZIP or tar.gz marketplace bundle from the
+[latest GitHub release](https://github.com/jackeydou/codex-lang-coach/releases/latest).
+Then install the extracted directory as a local marketplace:
+
+    codex plugin marketplace add /path/to/language-coach-marketplace-v0.1.0
+    codex plugin add language-coach@language-coach
+
+Review and trust the plugin hooks, then start a new Codex task so the plugin runtime is loaded.
+
 ## Development
 
 Install dependencies:
@@ -158,6 +169,11 @@ dist/language-coach/
 ```
 
 The distribution must not depend on workspace imports, repository-relative source paths, TypeScript execution, or a repository-level `node_modules` directory. It should continue to work when copied outside this repository.
+
+Pushing a version tag such as v0.1.0 runs the GitHub Actions release workflow. The workflow
+checks and tests the workspace, builds the plugin, creates ZIP and tar.gz marketplace bundles,
+writes SHA-256 checksums, and publishes the files to GitHub Releases. The tag version must match
+the root package version.
 
 ## Validation
 

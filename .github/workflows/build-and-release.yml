@@ -1,0 +1,89 @@
+name: Build and release
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.19.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check source
+        run: pnpm check
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build plugin
+        run: pnpm build:plugin
+
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $package_version."
+            exit 1
+          fi
+
+      - name: Package marketplace
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          bundle_name="language-coach-marketplace-v${package_version}"
+          mkdir -p "staging/${bundle_name}/.agents/plugins"
+          mkdir -p "staging/${bundle_name}/plugins"
+          cp packaging/marketplace.json "staging/${bundle_name}/.agents/plugins/marketplace.json"
+          cp -R dist/language-coach "staging/${bundle_name}/plugins/language-coach"
+          mkdir -p release
+          tar -C staging -czf "release/${bundle_name}.tar.gz" "$bundle_name"
+          (cd staging && zip -qr "../release/${bundle_name}.zip" "$bundle_name")
+          (cd release && sha256sum *.tar.gz *.zip > SHA256SUMS)
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: language-coach-marketplace
+          path: |
+            release/*.tar.gz
+            release/*.zip
+            release/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            release/*.tar.gz \
+            release/*.zip \
+            release/SHA256SUMS \
+            --title "Language Coach $GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag
