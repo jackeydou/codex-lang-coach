@@ -87,3 +87,33 @@ jobs:
             --title "Language Coach $GITHUB_REF_NAME" \
             --generate-notes \
             --verify-tag
+
+      - name: Publish Git marketplace branch
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          bundle_name="language-coach-marketplace-v${package_version}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin marketplace >/dev/null 2>&1; then
+            git fetch origin marketplace
+            git checkout -B marketplace origin/marketplace
+            git rm -rf --ignore-unmatch .agents plugins
+          else
+            git checkout --orphan marketplace
+            git rm -rf .
+          fi
+
+          cp -R "staging/${bundle_name}/.agents" .
+          cp -R "staging/${bundle_name}/plugins" .
+          git add .agents plugins
+
+          if git diff --cached --quiet; then
+            echo "Marketplace branch is already up to date."
+            exit 0
+          fi
+
+          git commit -m "Publish Language Coach v${package_version}"
+          git push origin HEAD:marketplace
