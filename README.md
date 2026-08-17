@@ -52,7 +52,26 @@ The generated `dist/language-coach` directory is the only installable artifact. 
 - Node.js 22.5 or newer
 - pnpm 11 or newer
 
-## Install from a release
+## Install from GitHub
+
+Add the generated `marketplace` branch, then install the plugin:
+
+```bash
+codex plugin marketplace add jackeydou/codex-lang-coach --ref marketplace
+codex plugin add language-coach@language-coach
+```
+
+The full Git URL works too:
+
+```bash
+codex plugin marketplace add https://github.com/jackeydou/codex-lang-coach.git --ref marketplace
+```
+
+Because this repository is private, Git must be authenticated as a GitHub account that can read it.
+Review and trust the plugin hooks after installation, then start a new Codex task so the plugin
+runtime is loaded.
+
+## Install from a release archive
 
 Download and extract the ZIP or tar.gz marketplace bundle from the
 [latest GitHub release](https://github.com/jackeydou/codex-lang-coach/releases/latest).
@@ -61,7 +80,8 @@ Then install the extracted directory as a local marketplace:
     codex plugin marketplace add /path/to/language-coach-marketplace-v0.1.0
     codex plugin add language-coach@language-coach
 
-Review and trust the plugin hooks, then start a new Codex task so the plugin runtime is loaded.
+Codex cannot use the GitHub Release ZIP URL directly. It must receive the extracted local directory
+or the Git repository URL shown above.
 
 ## Development
 
@@ -170,10 +190,19 @@ dist/language-coach/
 
 The distribution must not depend on workspace imports, repository-relative source paths, TypeScript execution, or a repository-level `node_modules` directory. It should continue to work when copied outside this repository.
 
-Pushing a version tag such as v0.1.0 runs the GitHub Actions release workflow. The workflow
-checks and tests the workspace, builds the plugin, creates ZIP and tar.gz marketplace bundles,
-writes SHA-256 checksums, and publishes the files to GitHub Releases. The tag version must match
-the root package version.
+Pushing a version tag such as v0.1.0 runs the GitHub Actions release workflow. The workflow checks
+and tests the workspace, builds the plugin, creates ZIP and tar.gz marketplace bundles, writes
+SHA-256 checksums, publishes the files to GitHub Releases, and updates the generated `marketplace`
+branch. The tag version must match the root package version.
+
+The workflow can also be run manually from `master` to rebuild the `marketplace` branch without
+creating another GitHub Release. The generated branch contains only the marketplace catalog and
+the self-contained plugin:
+
+```text
+.agents/plugins/marketplace.json
+plugins/language-coach/
+```
 
 ## Validation
 
