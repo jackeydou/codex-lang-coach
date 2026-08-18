@@ -67,6 +67,34 @@ codex plugin add language-coach@language-coach
 Codex cannot use the GitHub Release ZIP URL directly. It must receive the extracted local directory
 or the Git repository URL shown above.
 
+
+## How to use it
+
+1. Enable plugin hooks after you install it;
+<img width="1338" height="606" alt="image" src="https://github.com/user-attachments/assets/82c08958-2963-440f-a4f2-dcc3711b2864" />
+
+2. Then you can chat with your codex, now codex will correct and polish your message and save English notes into local sqlite
+3. Let your codex "Open the Language Coach dashboard", then you can see your English notes and your activities;
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img
+        src="https://github.com/user-attachments/assets/38552109-97db-4108-be5e-385bbe7c4e1a"
+        alt="Image 1"
+        width="100%"
+      />
+    </td>
+    <td width="50%" valign="top">
+      <img
+        src="https://github.com/user-attachments/assets/3f66a3c5-e82d-4d91-8c9a-84dd58aa1b9b"
+        alt="Image 2"
+        width="100%"
+      />
+    </td>
+  </tr>
+</table>
+
 ## Architecture
 
 The pnpm workspace separates product source code from the assembled Codex plugin:
