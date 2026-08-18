@@ -1,6 +1,6 @@
 {
   "name": "language-coach",
-  "version": "0.1.0+codex.20260818023626",
+  "version": "0.1.1+codex.20260818075856",
   "description": "Turn everyday Codex messages into private, reusable language-learning notes.",
   "author": {
     "name": "Language Coach contributors"
@@ -29,7 +29,9 @@
       "Open my private language-learning dashboard.",
       "Change my native and target languages."
     ],
-    "brandColor": "#202020"
+    "brandColor": "#202020",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png"
   },
   "mcpServers": "./.mcp.json"
 }
