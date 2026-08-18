@@ -1,5 +1,9 @@
 # Language Coach
 
+<p align="center">
+  <img src="./packages/plugin/scaffold/assets/logo.png" alt="Language Coach logo" width="180">
+</p>
+
 Language Coach is a local-first Codex plugin that turns everyday writing into focused, reusable language lessons. It reviews the language in a prompt, highlights meaningful corrections and patterns, and stores only structured learning notes in a private local database.
 
 The project includes a Codex plugin, an MCP interface, a local Node.js runtime, and a browser-based learning dashboard.
@@ -14,6 +18,54 @@ The project includes a Codex plugin, an MCP interface, a local Node.js runtime, 
 - Includes a local dashboard for reviewing and deleting learning notes.
 - Stores data locally in SQLite by default.
 - Avoids saving unrelated task context, files, or task answers.
+
+## Installation
+
+### Install in the Codex app
+
+1. Open the **Plugins** tab.
+2. Click the **Add** button in the top-right corner of the Plugins page.
+3. In the **Add plugin marketplace** dialog, enter:
+   - **Source:** `git@github.com:jackeydou/codex-lang-coach.git`
+   - **Git ref:** `marketplace`
+   - **Sparse paths:** leave empty
+4. Click **Add marketplace**.
+5. Find **Language Coach** in the added marketplace and install it.
+
+![Add plugin marketplace dialog](./resources/add-codex-marketplace.png)
+
+Because this repository is private, Git must be authenticated as a GitHub account that can read it.
+Review and trust the plugin hooks after installation, then start a new Codex task so the plugin
+runtime is loaded.
+
+### Install from the CLI
+
+Add the generated `marketplace` branch, then install the plugin:
+
+```bash
+codex plugin marketplace add jackeydou/codex-lang-coach --ref marketplace
+codex plugin add language-coach@language-coach
+```
+
+The full Git URL works too:
+
+```bash
+codex plugin marketplace add https://github.com/jackeydou/codex-lang-coach.git --ref marketplace
+```
+
+### Install from a release archive
+
+Download and extract the ZIP or tar.gz marketplace bundle from the
+[latest GitHub release](https://github.com/jackeydou/codex-lang-coach/releases/latest).
+Then install the extracted directory as a local marketplace:
+
+```bash
+codex plugin marketplace add /path/to/language-coach-marketplace-v0.1.1
+codex plugin add language-coach@language-coach
+```
+
+Codex cannot use the GitHub Release ZIP URL directly. It must receive the extracted local directory
+or the Git repository URL shown above.
 
 ## Architecture
 
@@ -51,37 +103,6 @@ The generated `dist/language-coach` directory is the only installable artifact. 
 
 - Node.js 22.5 or newer
 - pnpm 11 or newer
-
-## Install from GitHub
-
-Add the generated `marketplace` branch, then install the plugin:
-
-```bash
-codex plugin marketplace add jackeydou/codex-lang-coach --ref marketplace
-codex plugin add language-coach@language-coach
-```
-
-The full Git URL works too:
-
-```bash
-codex plugin marketplace add https://github.com/jackeydou/codex-lang-coach.git --ref marketplace
-```
-
-Because this repository is private, Git must be authenticated as a GitHub account that can read it.
-Review and trust the plugin hooks after installation, then start a new Codex task so the plugin
-runtime is loaded.
-
-## Install from a release archive
-
-Download and extract the ZIP or tar.gz marketplace bundle from the
-[latest GitHub release](https://github.com/jackeydou/codex-lang-coach/releases/latest).
-Then install the extracted directory as a local marketplace:
-
-    codex plugin marketplace add /path/to/language-coach-marketplace-v0.1.0
-    codex plugin add language-coach@language-coach
-
-Codex cannot use the GitHub Release ZIP URL directly. It must receive the extracted local directory
-or the Git repository URL shown above.
 
 ## Development
 
@@ -190,7 +211,7 @@ dist/language-coach/
 
 The distribution must not depend on workspace imports, repository-relative source paths, TypeScript execution, or a repository-level `node_modules` directory. It should continue to work when copied outside this repository.
 
-Pushing a version tag such as v0.1.0 runs the GitHub Actions release workflow. The workflow checks
+Pushing a version tag such as v0.1.1 runs the GitHub Actions release workflow. The workflow checks
 and tests the workspace, builds the plugin, creates ZIP and tar.gz marketplace bundles, writes
 SHA-256 checksums, publishes the files to GitHub Releases, and updates the generated `marketplace`
 branch. The tag version must match the root package version.

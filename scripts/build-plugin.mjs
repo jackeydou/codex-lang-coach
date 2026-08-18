@@ -10,7 +10,7 @@ const target = join(root, "dist", "language-coach");
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
 
-for (const entry of [".codex-plugin", ".mcp.json", "hooks", "skills"]) {
+for (const entry of [".codex-plugin", ".mcp.json", "assets", "hooks", "skills"]) {
   await cp(join(source, entry), join(target, entry), { recursive: true });
 }
 
@@ -41,6 +41,8 @@ await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 const requiredFiles = [
   ".codex-plugin/plugin.json",
   ".mcp.json",
+  "assets/icon.png",
+  "assets/logo.png",
   "hooks/hooks.json",
   "hooks/user-prompt-submit.mjs",
   "hooks/stop.mjs",
