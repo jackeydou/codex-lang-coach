@@ -1,7 +1,7 @@
 # Language Coach
 
 <p align="center">
-  <img src="./packages/plugin/scaffold/assets/logo.png" alt="Language Coach logo" width="180">
+  <img src="./packages/plugin/scaffold/assets/icon.png" alt="Language Coach icon" width="180">
 </p>
 
 Language Coach is a local-first Codex plugin that turns everyday writing into focused, reusable language lessons. It reviews the language in a prompt, highlights meaningful corrections and patterns, and stores only structured learning notes in a private local database.
