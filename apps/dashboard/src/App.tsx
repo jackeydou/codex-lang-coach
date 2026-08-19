@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import type { DashboardData, LanguageProfile } from "@language-coach/core"
-import { ActivityIcon, BookOpenCheckIcon, ChartNoAxesCombinedIcon, FlameIcon, LanguagesIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
+import type { DashboardData, LanguageProfile, LearningNote } from "@language-coach/core"
+import { ActivityIcon, BookOpenCheckIcon, ChartNoAxesCombinedIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, LanguagesIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
 
 import { ActivityChart, CategoryChart, LanguageUseChart } from "@/components/analytics-charts"
 import { NoteFlashcard } from "@/components/note-flashcard"
@@ -134,6 +134,83 @@ function PatternRanking({ patterns }: { patterns: DashboardData["progress"]["rec
         </li>
       ))}
     </ol>
+  )
+}
+
+function FlashcardDeck({ notes, onDelete }: { notes: LearningNote[]; onDelete: (id: string) => Promise<void> }) {
+  const [page, setPage] = useState(0)
+  const [direction, setDirection] = useState<"forward" | "backward">("forward")
+
+  useEffect(() => {
+    setPage((current) => Math.min(current, Math.max(0, notes.length - 1)))
+  }, [notes.length])
+
+  const pageOptions = useMemo(() => {
+    if (notes.length <= 5) return notes.map((_, index) => index)
+    const candidates = new Set([0, notes.length - 1, page - 1, page, page + 1])
+    const pages = [...candidates].filter((item) => item >= 0 && item < notes.length).sort((a, b) => a - b)
+    return pages.flatMap<(number | "ellipsis")>((item, index) => {
+      const previous = pages[index - 1] ?? item
+      return index > 0 && item - previous > 1 ? ["ellipsis", item] : [item]
+    })
+  }, [notes, page])
+
+  if (!notes.length) return null
+
+  const activeNote = notes[page]
+  if (!activeNote) return null
+  const remaining = notes.length - page - 1
+
+  function goTo(nextPage: number) {
+    const clampedPage = Math.max(0, Math.min(notes.length - 1, nextPage))
+    if (clampedPage === page) return
+    setDirection(clampedPage > page ? "forward" : "backward")
+    setPage(clampedPage)
+  }
+
+  return (
+    <div className="flashcard-deck" aria-label="Flashcard deck">
+      <div className="flashcard-deck-status" aria-live="polite">
+        <span><strong>{page + 1}</strong> / {notes.length}</span>
+        <span>{remaining ? `${remaining} left in this pass` : "Last card"}</span>
+      </div>
+      <div className="flashcard-deck-progress" aria-hidden="true">
+        <span style={{ transform: `scaleX(${(page + 1) / notes.length})` }} />
+      </div>
+
+      <div className="flashcard-deck-stage">
+        {remaining > 1 && <div className="deck-layer deck-layer-back" aria-hidden="true" />}
+        {remaining > 0 && <div className="deck-layer deck-layer-middle" aria-hidden="true" />}
+        <div key={activeNote.id} className="deck-active-card" data-direction={direction}>
+          <NoteFlashcard note={activeNote} onDelete={onDelete} />
+        </div>
+      </div>
+
+      <nav className="flashcard-pagination" aria-label="Flashcard pages">
+        <Button variant="outline" onClick={() => goTo(page - 1)} disabled={page === 0}>
+          <ChevronLeftIcon data-icon="inline-start" /> Previous
+        </Button>
+        <div className="flashcard-page-list">
+          {pageOptions.map((item, index) => item === "ellipsis" ? (
+            <span key={`ellipsis-${index}`} className="flashcard-page-ellipsis" aria-hidden="true">…</span>
+          ) : (
+            <Button
+              key={item}
+              size="icon"
+              variant={item === page ? "default" : "ghost"}
+              onClick={() => goTo(item)}
+              aria-label={`Go to card ${item + 1}`}
+              aria-current={item === page ? "page" : undefined}
+            >
+              {item + 1}
+            </Button>
+          ))}
+        </div>
+        <Button variant="outline" onClick={() => goTo(page + 1)} disabled={page === notes.length - 1}>
+          Next <ChevronRightIcon data-icon="inline-end" />
+        </Button>
+      </nav>
+    </div>
   )
 }
 
@@ -298,16 +375,15 @@ export function App() {
               </Card>
             </section>
 
-            <section className="flex flex-col gap-4" id="flashcards">
-              <div className="flex flex-wrap items-end justify-between gap-3">
+            <section className="flashcard-section" id="flashcards">
+              <div className="flashcard-section-header">
                 <div>
                   <h2 className="text-xl font-semibold tracking-tight">English note flashcards</h2>
                   <p className="text-sm text-muted-foreground">Recall the natural phrasing first, then reveal the lesson.</p>
                 </div>
-                <Badge variant="outline">{data.notes.length} cards</Badge>
               </div>
               {data.notes.length ? (
-                <div className="flashcard-grid">{data.notes.map((note) => <NoteFlashcard key={note.id} note={note} onDelete={deleteNote} />)}</div>
+                <FlashcardDeck notes={data.notes} onDelete={deleteNote} />
               ) : (
                 <Card><CardHeader><CardTitle>No flashcards yet</CardTitle><CardDescription>Cards appear only when a message contains a meaningful correction or reusable pattern.</CardDescription></CardHeader></Card>
               )}

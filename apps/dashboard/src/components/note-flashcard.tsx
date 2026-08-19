@@ -24,7 +24,7 @@ export function NoteFlashcard({ note, onDelete }: { note: LearningNote; onDelete
   }
 
   return (
-    <Card className="flashcard min-h-[22rem]" data-revealed={revealed}>
+    <Card className="flashcard" data-revealed={revealed}>
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{note.inputLanguage}</Badge>

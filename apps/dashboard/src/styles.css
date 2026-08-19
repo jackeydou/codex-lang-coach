@@ -198,16 +198,139 @@
 .language-legend strong { color: var(--foreground); font-variant-numeric: tabular-nums; }
 .legend-dot { width: 0.5rem; height: 0.5rem; border-radius: 999px; }
 
-.flashcard-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+.flashcard-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  scroll-margin-top: 5rem;
+}
+
+.flashcard-section-header,
+.flashcard-deck {
+  width: min(100%, 50rem);
+  margin-inline: auto;
+}
+
+.flashcard-section-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
   gap: 1rem;
+}
+
+.flashcard-deck-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-inline: 0.125rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.flashcard-deck-status strong { color: var(--foreground); }
+
+.flashcard-deck-progress {
+  height: 2px;
+  margin-top: 0.625rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.flashcard-deck-progress > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: var(--foreground);
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flashcard-deck-stage {
+  position: relative;
+  isolation: isolate;
+  margin-top: 1rem;
+  padding-bottom: 1.5rem;
+}
+
+.deck-layer {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  pointer-events: none;
+  transform-origin: 50% 100%;
+}
+
+.deck-layer-back {
+  z-index: -2;
+  transform: translateY(1.25rem) scale(0.94) rotate(-0.35deg);
+  opacity: 0.42;
+}
+
+.deck-layer-middle {
+  z-index: -1;
+  transform: translateY(0.65rem) scale(0.97) rotate(0.2deg);
+  opacity: 0.7;
+}
+
+.deck-active-card {
+  position: relative;
+  z-index: 1;
+}
+
+.deck-active-card[data-direction="forward"] {
+  animation: deck-card-forward 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.deck-active-card[data-direction="backward"] {
+  animation: deck-card-backward 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.flashcard-pagination {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  margin: 1rem auto 0;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius-lg) + 0.25rem);
+  background: color-mix(in oklch, var(--card) 92%, var(--muted));
+}
+
+.flashcard-page-list {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+
+.flashcard-page-ellipsis {
+  width: 1.5rem;
+  color: var(--muted-foreground);
+  text-align: center;
 }
 
 .flashcard {
   container-type: inline-size;
+  min-height: clamp(19rem, 38vw, 22rem);
   scroll-margin-top: 5rem;
+  box-shadow: 0 0.75rem 2rem oklch(0.2 0.01 90 / 0.055);
   transition: background-color 160ms cubic-bezier(0.16, 1, 0.3, 1), border-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flashcard blockquote,
+.flashcard[data-revealed="true"] p.text-pretty {
+  max-width: 40ch;
+  font-size: clamp(1.125rem, 2.5cqi, 1.4rem);
+  line-height: 1.55;
 }
 
 .flashcard-face { animation: flashcard-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
@@ -216,6 +339,25 @@
 @keyframes flashcard-in {
   from { opacity: 0; transform: translateY(0.35rem); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes deck-card-forward {
+  from { opacity: 0; transform: translateX(2.5rem) rotate(0.6deg) scale(0.985); }
+  to { opacity: 1; transform: translateX(0) rotate(0) scale(1); }
+}
+
+@keyframes deck-card-backward {
+  from { opacity: 0; transform: translateX(-2.5rem) rotate(-0.6deg) scale(0.985); }
+  to { opacity: 1; transform: translateX(0) rotate(0) scale(1); }
+}
+
+@media (max-width: 35rem) {
+  .flashcard-deck-status span:last-child { display: none; }
+  .flashcard-pagination { width: 100%; justify-content: space-between; }
+  .flashcard-pagination > button { padding-inline: 0.5rem; }
+  .flashcard-page-list { flex: 1; }
+  .flashcard-page-list [data-slot="button"]:not([aria-current="page"]) { display: none; }
+  .flashcard-page-ellipsis { display: none; }
 }
 
 @media (min-width: 48rem) {

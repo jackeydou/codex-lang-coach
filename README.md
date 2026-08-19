@@ -60,7 +60,7 @@ Download and extract the ZIP or tar.gz marketplace bundle from the
 Then install the extracted directory as a local marketplace:
 
 ```bash
-codex plugin marketplace add /path/to/language-coach-marketplace-v0.1.1
+codex plugin marketplace add /path/to/language-coach-marketplace-v0.1.2
 codex plugin add language-coach@language-coach
 ```
 
@@ -239,7 +239,7 @@ dist/language-coach/
 
 The distribution must not depend on workspace imports, repository-relative source paths, TypeScript execution, or a repository-level `node_modules` directory. It should continue to work when copied outside this repository.
 
-Pushing a version tag such as v0.1.1 runs the GitHub Actions release workflow. The workflow checks
+Pushing a version tag such as v0.1.2 runs the GitHub Actions release workflow. The workflow checks
 and tests the workspace, builds the plugin, creates ZIP and tar.gz marketplace bundles, writes
 SHA-256 checksums, publishes the files to GitHub Releases, and updates the generated `marketplace`
 branch. The tag version must match the root package version.
