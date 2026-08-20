@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
 import type { DashboardData, LanguageProfile, LearningNote } from "@language-coach/core"
-import { ActivityIcon, BookOpenCheckIcon, ChartNoAxesCombinedIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, LanguagesIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
+import { ActivityIcon, ArrowLeftIcon, BookOpenCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, LanguagesIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
 
 import { ActivityChart, CategoryChart, LanguageUseChart } from "@/components/analytics-charts"
 import { NoteFlashcard } from "@/components/note-flashcard"
@@ -10,7 +10,6 @@ import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle }
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -26,77 +25,22 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
 
 function LoadingDashboard() {
   return (
-    <div className="grid min-h-svh grid-cols-1 md:grid-cols-[16rem_1fr]" aria-busy="true" aria-label="Loading dashboard">
-      <div className="hidden border-r bg-muted/30 p-4 md:flex md:flex-col md:gap-4">
-        <Skeleton className="h-10 w-40" />
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-8 w-full" />
-        <Skeleton className="h-8 w-full" />
-      </div>
-      <main className="flex flex-col gap-6 p-4 md:p-8">
-        <Skeleton className="h-9 w-56" />
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-32 w-full" />)}
-        </div>
-        <Skeleton className="h-80 w-full" />
+    <div className="min-h-svh" aria-busy="true" aria-label="Loading dashboard">
+      <header className="dashboard-header"><Skeleton className="h-9 w-44" /><Skeleton className="h-9 w-24" /></header>
+      <main className="dashboard-content dashboard-content--focused">
+        <Skeleton className="h-16 w-72 max-w-full" />
+        <Skeleton className="h-96 w-full" />
       </main>
     </div>
   )
 }
 
-function AppSidebar({ data }: { data: DashboardData }) {
-  const navigation = [
-    { label: "Overview", href: "#overview", icon: ChartNoAxesCombinedIcon },
-    { label: "Activity", href: "#activity", icon: ActivityIcon },
-    { label: "Flashcards", href: "#flashcards", icon: BookOpenCheckIcon, badge: data.notes.length },
-    { label: "Settings", href: "#settings", icon: Settings2Icon },
-  ]
-
+function Brand() {
   return (
-    <Sidebar collapsible="icon">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild tooltip="Language Coach">
-              <a href="#overview">
-                <span className="brand-mark"><LanguagesIcon /></span>
-                <span className="grid gap-0.5 leading-none">
-                  <strong>Language Coach</strong>
-                  <span className="text-xs text-muted-foreground">Learning analytics</span>
-                </span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {navigation.map((item, index) => (
-                <SidebarMenuItem key={item.label}>
-                  <SidebarMenuButton asChild isActive={index === 0} tooltip={item.label}>
-                    <a href={item.href}><item.icon /><span>{item.label}</span></a>
-                  </SidebarMenuButton>
-                  {item.badge !== undefined && <SidebarMenuBadge>{item.badge}</SidebarMenuBadge>}
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-      <SidebarFooter>
-        <div className="flex items-center gap-2 rounded-lg border p-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:p-0">
-          <span className={`status-dot ${data.profile.coachEnabled ? "is-active" : ""}`} aria-hidden="true" />
-          <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-            <p className="truncate text-sm font-medium">{data.profile.coachEnabled ? "Coach is active" : "Coach is paused"}</p>
-            <p className="truncate text-xs text-muted-foreground">{data.profile.nativeLanguage} → {data.profile.targetLanguage}</p>
-          </div>
-        </div>
-      </SidebarFooter>
-      <SidebarRail />
-    </Sidebar>
+    <a className="brand" href="/" aria-label="Language Coach home">
+      <span className="brand-mark"><LanguagesIcon /></span>
+      <span className="brand-name">Language Coach</span>
+    </a>
   )
 }
 
@@ -266,6 +210,115 @@ function SettingsCard({ profile, saving, onSave }: {
   )
 }
 
+function DashboardHeader({ settingsPage = false }: { settingsPage?: boolean }) {
+  return (
+    <header className="dashboard-header">
+      <Brand />
+      <Button variant="ghost" asChild>
+        <a href={settingsPage ? "/" : "/settings"}>
+          {settingsPage ? <ArrowLeftIcon data-icon="inline-start" /> : <Settings2Icon data-icon="inline-start" />}
+          {settingsPage ? "Back to notes" : "Settings"}
+        </a>
+      </Button>
+    </header>
+  )
+}
+
+function NotesPage({ data, onDelete }: { data: DashboardData; onDelete: (id: string) => Promise<void> }) {
+  return (
+    <div className="min-h-svh">
+      <DashboardHeader />
+      <main className="dashboard-content dashboard-content--focused" id="main-content">
+        <section className="notes-intro">
+          <div>
+            <p className="notes-eyebrow">{data.profile.nativeLanguage} → {data.profile.targetLanguage}</p>
+            <h1>Your language notes</h1>
+            <p>Recall the natural phrasing, then reveal the lesson.</p>
+          </div>
+          <span className="note-count" aria-label={`${data.notes.length} learning notes`}>
+            <strong>{data.notes.length}</strong>
+            <span>{data.notes.length === 1 ? "note" : "notes"}</span>
+          </span>
+        </section>
+
+        <section className="flashcard-section" aria-label="English note flashcards">
+          {data.notes.length ? (
+            <FlashcardDeck notes={data.notes} onDelete={onDelete} />
+          ) : (
+            <Card className="empty-notes">
+              <CardHeader>
+                <CardTitle>No notes yet</CardTitle>
+                <CardDescription>Useful corrections and reusable language patterns will appear here as flashcards.</CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+function SettingsPage({ data, saving, onSave }: {
+  data: DashboardData
+  saving: boolean
+  onSave: (profile: Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">) => Promise<void>
+}) {
+  const topCategory = data.progress.categoryCounts[0]
+
+  return (
+    <div className="min-h-svh">
+      <DashboardHeader settingsPage />
+      <main className="dashboard-content settings-page" id="main-content">
+        <section className="settings-intro">
+          <p className="notes-eyebrow">Settings &amp; activity</p>
+          <h1>Learning overview</h1>
+          <p>Review your progress and manage how Language Coach works.</p>
+        </section>
+
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Learning summary">
+          <MetricCard label="Learning notes" value={data.progress.totalNotes} detail={`${data.progress.notesThisWeek} saved this week`} icon={BookOpenCheckIcon} />
+          <MetricCard label="Current streak" value={`${data.progress.currentStreak}d`} detail={`${data.progress.activeDays} active days overall`} icon={FlameIcon} />
+          <MetricCard label="Target-language share" value={`${data.progress.languageUse.targetShare}%`} detail={`${data.progress.languageUse.target} target-language notes`} icon={TargetIcon} />
+          <MetricCard label="Top correction" value={topCategory?.category ?? "—"} detail={topCategory ? `${topCategory.count} corrections recorded` : "No corrections recorded"} icon={SparklesIcon} />
+        </section>
+
+        <section className="analytics-grid" aria-label="Learning activity">
+          <Card className="analytics-card activity-panel">
+            <CardHeader><CardTitle>Weekly activity</CardTitle><CardDescription>Useful language notes saved during the last seven days.</CardDescription></CardHeader>
+            <CardContent><ActivityChart activity={data.progress.weeklyActivity} /></CardContent>
+          </Card>
+          <Card className="analytics-card language-panel">
+            <CardHeader><CardTitle>Language use</CardTitle><CardDescription>Language choice among messages that became learning notes.</CardDescription></CardHeader>
+            <CardContent>
+              <LanguageUseChart data={data} />
+              <div className="language-legend">
+                {[
+                  [data.profile.targetLanguage, data.progress.languageUse.target, "chart-1"],
+                  [data.profile.nativeLanguage, data.progress.languageUse.native, "chart-2"],
+                  ["Mixed", data.progress.languageUse.mixed, "chart-3"],
+                  ["Other", data.progress.languageUse.other, "chart-4"],
+                ].map(([label, value, color]) => (
+                  <div key={String(label)}><span className="legend-dot" style={{ background: `var(--${color})` }} /><span>{label}</span><strong>{value}</strong></div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="analytics-card category-panel">
+            <CardHeader><CardTitle>Correction mix</CardTitle><CardDescription>Where your saved lessons are concentrated.</CardDescription></CardHeader>
+            <CardContent><CategoryChart categories={data.progress.categoryCounts} /></CardContent>
+          </Card>
+          <Card className="analytics-card pattern-panel">
+            <CardHeader><CardTitle>Recurring patterns</CardTitle><CardDescription>Structures and phrases that have appeared more than once.</CardDescription></CardHeader>
+            <CardContent><PatternRanking patterns={data.progress.recurringPatterns} /></CardContent>
+          </Card>
+        </section>
+
+        <SettingsCard profile={data.profile} saving={saving} onSave={onSave} />
+      </main>
+    </div>
+  )
+}
+
 export function App() {
   const [data, setData] = useState<DashboardData>()
   const [error, setError] = useState("")
@@ -281,8 +334,6 @@ export function App() {
   }
 
   useEffect(() => { void load() }, [])
-  const topCategory = useMemo(() => data?.progress.categoryCounts[0], [data])
-
   async function saveProfile(profile: Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">) {
     setSaving(true)
     try {
@@ -310,89 +361,14 @@ export function App() {
     )
   }
 
+  const settingsPage = window.location.pathname === "/settings" || window.location.pathname.startsWith("/settings/")
+
   return (
     <TooltipProvider>
-      <SidebarProvider>
-        <AppSidebar data={data} />
-        <SidebarInset>
-          <header className="dashboard-header">
-            <div className="flex items-center gap-2">
-              <SidebarTrigger />
-              <Separator orientation="vertical" className="h-5" />
-              <div>
-                <h1 className="text-sm font-semibold">Learning dashboard</h1>
-                <p className="text-xs text-muted-foreground">Private · stored locally</p>
-              </div>
-            </div>
-            <Badge variant={data.profile.coachEnabled ? "secondary" : "outline"}>
-              <span className={`status-dot ${data.profile.coachEnabled ? "is-active" : ""}`} aria-hidden="true" />
-              {data.profile.coachEnabled ? "Coaching on" : "Coaching paused"}
-            </Badge>
-          </header>
-
-          <div className="dashboard-content" id="overview">
-            <section className="flex flex-col gap-1">
-              <p className="text-sm text-muted-foreground">{data.profile.nativeLanguage} → {data.profile.targetLanguage}</p>
-              <h2 className="text-2xl font-semibold tracking-tight">Your learning activity</h2>
-              <p className="max-w-2xl text-sm text-muted-foreground">Track meaningful corrections, language choice, recurring patterns, and the lessons worth reviewing.</p>
-            </section>
-
-            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Learning summary">
-              <MetricCard label="Learning notes" value={data.progress.totalNotes} detail={`${data.progress.notesThisWeek} saved this week`} icon={BookOpenCheckIcon} />
-              <MetricCard label="Current streak" value={`${data.progress.currentStreak}d`} detail={`${data.progress.activeDays} active days overall`} icon={FlameIcon} />
-              <MetricCard label="Target-language share" value={`${data.progress.languageUse.targetShare}%`} detail={`${data.progress.languageUse.target} target-language notes`} icon={TargetIcon} />
-              <MetricCard label="Top correction" value={topCategory?.category ?? "—"} detail={topCategory ? `${topCategory.count} corrections recorded` : "No corrections recorded"} icon={SparklesIcon} />
-            </section>
-
-            <section className="analytics-grid" id="activity">
-              <Card className="analytics-card activity-panel">
-                <CardHeader><CardTitle>Weekly activity</CardTitle><CardDescription>Useful language notes saved during the last seven days.</CardDescription></CardHeader>
-                <CardContent><ActivityChart activity={data.progress.weeklyActivity} /></CardContent>
-              </Card>
-              <Card className="analytics-card language-panel">
-                <CardHeader><CardTitle>Language use</CardTitle><CardDescription>Language choice among messages that became learning notes.</CardDescription></CardHeader>
-                <CardContent>
-                  <LanguageUseChart data={data} />
-                  <div className="language-legend">
-                    {[
-                      [data.profile.targetLanguage, data.progress.languageUse.target, "chart-1"],
-                      [data.profile.nativeLanguage, data.progress.languageUse.native, "chart-2"],
-                      ["Mixed", data.progress.languageUse.mixed, "chart-3"],
-                      ["Other", data.progress.languageUse.other, "chart-4"],
-                    ].map(([label, value, color]) => (
-                      <div key={String(label)}><span className="legend-dot" style={{ background: `var(--${color})` }} /><span>{label}</span><strong>{value}</strong></div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="analytics-card category-panel">
-                <CardHeader><CardTitle>Correction mix</CardTitle><CardDescription>Where your saved lessons are concentrated.</CardDescription></CardHeader>
-                <CardContent><CategoryChart categories={data.progress.categoryCounts} /></CardContent>
-              </Card>
-              <Card className="analytics-card pattern-panel">
-                <CardHeader><CardTitle>Recurring patterns</CardTitle><CardDescription>Structures and phrases that have appeared more than once.</CardDescription></CardHeader>
-                <CardContent><PatternRanking patterns={data.progress.recurringPatterns} /></CardContent>
-              </Card>
-            </section>
-
-            <section className="flashcard-section" id="flashcards">
-              <div className="flashcard-section-header">
-                <div>
-                  <h2 className="text-xl font-semibold tracking-tight">English note flashcards</h2>
-                  <p className="text-sm text-muted-foreground">Recall the natural phrasing first, then reveal the lesson.</p>
-                </div>
-              </div>
-              {data.notes.length ? (
-                <FlashcardDeck notes={data.notes} onDelete={deleteNote} />
-              ) : (
-                <Card><CardHeader><CardTitle>No flashcards yet</CardTitle><CardDescription>Cards appear only when a message contains a meaningful correction or reusable pattern.</CardDescription></CardHeader></Card>
-              )}
-            </section>
-
-            <SettingsCard profile={data.profile} saving={saving} onSave={saveProfile} />
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
+      <a className="skip-link" href="#main-content">Skip to content</a>
+      {settingsPage
+        ? <SettingsPage data={data} saving={saving} onSave={saveProfile} />
+        : <NotesPage data={data} onDelete={deleteNote} />}
     </TooltipProvider>
   )
 }

@@ -118,13 +118,13 @@
   top: 0;
   z-index: 20;
   display: flex;
-  min-height: 4rem;
+  min-height: 4.5rem;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   border-bottom: 1px solid var(--border);
   background: color-mix(in oklch, var(--background) 97%, transparent);
-  padding: 0.75rem clamp(1rem, 2vw, 2rem);
+  padding: 0.75rem clamp(1rem, 4vw, 3rem);
   backdrop-filter: blur(8px);
 }
 
@@ -135,6 +135,27 @@
   gap: clamp(1.5rem, 3vw, 2.25rem);
   margin-inline: auto;
   padding: clamp(1.25rem, 3vw, 2rem);
+}
+
+.dashboard-content--focused {
+  width: min(100%, 58rem);
+  gap: clamp(2rem, 6vw, 4.5rem);
+  padding-top: clamp(2.5rem, 8vw, 6rem);
+  padding-bottom: clamp(3rem, 8vw, 6rem);
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+.brand-name {
+  font-size: 0.925rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
 }
 
 .brand-mark {
@@ -150,6 +171,70 @@
 }
 
 .brand-mark svg { width: 1rem; height: 1rem; }
+
+.notes-intro {
+  display: flex;
+  width: min(100%, 50rem);
+  align-items: end;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-inline: auto;
+}
+
+.notes-intro h1,
+.settings-intro h1 {
+  margin-top: 0.35rem;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 620;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+}
+
+.notes-intro p:last-child,
+.settings-intro p:last-child {
+  margin-top: 0.8rem;
+  color: var(--muted-foreground);
+  font-size: 0.925rem;
+}
+
+.notes-eyebrow {
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.note-count {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: end;
+  padding-bottom: 0.15rem;
+  color: var(--muted-foreground);
+  font-size: 0.7rem;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.note-count strong {
+  color: var(--foreground);
+  font-size: 2rem;
+  font-weight: 520;
+  letter-spacing: -0.05em;
+}
+
+.settings-page {
+  padding-top: clamp(2.5rem, 5vw, 4.5rem);
+  padding-bottom: clamp(3rem, 7vw, 6rem);
+}
+
+.settings-intro {
+  max-width: 46rem;
+  padding-bottom: clamp(0.5rem, 2vw, 1.5rem);
+}
+
+.settings-intro h1 { font-size: clamp(2rem, 4vw, 3.15rem); }
 
 .status-dot {
   display: inline-block;
@@ -204,6 +289,8 @@
   gap: 1.25rem;
   scroll-margin-top: 5rem;
 }
+
+.empty-notes { width: min(100%, 50rem); margin-inline: auto; }
 
 .flashcard-section-header,
 .flashcard-deck {
@@ -352,6 +439,10 @@
 }
 
 @media (max-width: 35rem) {
+  .dashboard-header { min-height: 4rem; }
+  .brand-name { display: none; }
+  .notes-intro { align-items: start; }
+  .note-count { padding-top: 0.25rem; }
   .flashcard-deck-status span:last-child { display: none; }
   .flashcard-pagination { width: 100%; justify-content: space-between; }
   .flashcard-pagination > button { padding-inline: 0.5rem; }
