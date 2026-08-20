@@ -253,6 +253,16 @@ function NotesPage({ data, onDelete }: { data: DashboardData; onDelete: (id: str
             </Card>
           )}
         </section>
+
+        <section className="recurring-patterns-section" aria-labelledby="recurring-patterns-title">
+          <Card>
+            <CardHeader>
+              <CardTitle id="recurring-patterns-title">Recurring patterns</CardTitle>
+              <CardDescription>Structures and phrases that have appeared more than once.</CardDescription>
+            </CardHeader>
+            <CardContent><PatternRanking patterns={data.progress.recurringPatterns} /></CardContent>
+          </Card>
+        </section>
       </main>
     </div>
   )
@@ -306,10 +316,6 @@ function SettingsPage({ data, saving, onSave }: {
           <Card className="analytics-card category-panel">
             <CardHeader><CardTitle>Correction mix</CardTitle><CardDescription>Where your saved lessons are concentrated.</CardDescription></CardHeader>
             <CardContent><CategoryChart categories={data.progress.categoryCounts} /></CardContent>
-          </Card>
-          <Card className="analytics-card pattern-panel">
-            <CardHeader><CardTitle>Recurring patterns</CardTitle><CardDescription>Structures and phrases that have appeared more than once.</CardDescription></CardHeader>
-            <CardContent><PatternRanking patterns={data.progress.recurringPatterns} /></CardContent>
           </Card>
         </section>
 

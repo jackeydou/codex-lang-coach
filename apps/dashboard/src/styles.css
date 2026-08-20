@@ -292,6 +292,7 @@
 
 .empty-notes { width: min(100%, 50rem); margin-inline: auto; }
 
+.recurring-patterns-section,
 .flashcard-section-header,
 .flashcard-deck {
   width: min(100%, 50rem);
@@ -459,7 +460,7 @@
   .analytics-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }
   .activity-panel { grid-column: span 8; }
   .language-panel { grid-column: span 4; }
-  .category-panel, .pattern-panel { grid-column: span 6; }
+  .category-panel { grid-column: span 12; }
 }
 
 @media (hover: hover) {
