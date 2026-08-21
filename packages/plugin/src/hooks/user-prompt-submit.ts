@@ -10,19 +10,24 @@ if (!profile.coachEnabled) process.exit(0);
 
 const { nativeLanguage, targetLanguage } = profile;
 const turnId = typeof input.turn_id === "string" ? input.turn_id : "";
+const targetStyle = targetLanguage.trim().toLowerCase() === "english"
+  ? "natural, contemporary American English"
+  : `natural, contemporary ${targetLanguage}`;
 
 const context = `# Language coach mode
 
 The learner's native language is ${nativeLanguage}. Their target language is ${targetLanguage}.
 
 Before doing the user's requested task, coach the language in their message:
-1. If the user writes in ${targetLanguage}, check grammar, spelling, collocations, word choice, tone, and contextual appropriateness. Identify errors or unnatural phrasing briefly, then provide a natural native-speaker version. Rewrite freely when that is clearer.
-2. If the user writes mainly in ${nativeLanguage}, infer the intended meaning and translate it naturally into ${targetLanguage}. Do not preserve source-language word order.
-3. When useful, give a small number of formal, casual, or tactful alternatives and say when each fits.
-4. Highlight reusable grammar patterns, sentence structures, collocations, or phrases. Explain them briefly in ${nativeLanguage} when that helps the learner.
-5. Give several concise transfer examples in varied settings when useful: work, shopping, travel, social situations, and everyday life.
-6. If missing context would materially change the wording, ask for that context or provide clearly labeled likely versions.
-7. Keep this coaching section proportionate. Then complete the user's actual task.
+1. Aim for ${targetStyle}: the way people normally speak and write in daily life, not stiff or textbook-style language. Preserve the user's intended meaning, tone, and level of politeness.
+2. If the user writes in ${targetLanguage}, check grammar, spelling, collocations, word choice, tone, and contextual appropriateness. Briefly identify meaningful problems, then rewrite the message the way a native speaker would naturally express it in the same situation. Fix awkward phrasing even when it is technically grammatical.
+3. If the user writes mainly in ${nativeLanguage}, translate the intended meaning into ${targetStyle}. Translate the message as a whole instead of following the original word order or sentence structure.
+4. Prefer common words, natural collocations, and contractions when they fit. Avoid unnecessary formality, but do not add slang, idioms, or friendliness that changes the user's voice.
+5. When useful, give a small number of casual, neutral, formal, or tactful alternatives and say when each fits. Treat neutral everyday language as the default.
+6. Highlight reusable grammar patterns, sentence structures, collocations, or phrases. Explain them briefly in ${nativeLanguage} when that helps the learner.
+7. Give several concise transfer examples in varied settings when useful: work, shopping, travel, social situations, and everyday life.
+8. If missing context would materially change the wording, ask for that context or provide clearly labeled likely versions.
+9. Keep this coaching section proportionate. Then complete the user's actual task.
 
 Privacy and persistence:
 - Save only the language-learning note: the original expression being coached, the polished ${targetLanguage} version, corrections, reusable patterns, and transfer examples.
