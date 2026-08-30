@@ -87,4 +87,36 @@ export interface DashboardData {
   profile: LanguageProfile;
   notes: LearningNote[];
   progress: ProgressSummary;
+  sync?: SyncStatus;
+}
+
+export interface DeletedLearningNote {
+  id: string;
+  deletedAt: string;
+}
+
+export interface SyncSnapshot {
+  profile: LanguageProfile;
+  notes: LearningNote[];
+  deletedNotes: DeletedLearningNote[];
+}
+
+export interface SyncStatus {
+  enabled: boolean;
+  userId?: string;
+  remoteUrl?: string;
+  lastSyncedAt?: string;
+  error?: string;
+}
+
+export interface RemoteSyncConfig {
+  remoteUrl: string;
+  token: string;
+  userId: string;
+}
+
+export interface DashboardRuntimeConfig {
+  mode: "local" | "remote";
+  remoteUrl: string;
+  authUrl?: string;
 }

@@ -77,4 +77,31 @@ describe("SqliteLearningStore", () => {
     });
     store.close();
   });
+
+  it("merges remote notes and keeps deletions deleted", () => {
+    const first = createStore();
+    const second = createStore();
+    const note = first.saveNote({
+      turnId: "sync-turn",
+      inputLanguage: "target",
+      originalExpression: "I look forward to meet you.",
+      polishedExpression: "I look forward to meeting you.",
+      corrections: [],
+      patterns: [],
+      examples: [],
+    });
+
+    second.mergeSyncSnapshot(first.getSyncSnapshot());
+    expect(second.listNotes().map((item) => item.id)).toContain(note.id);
+
+    expect(first.deleteNote(note.id)).toBe(true);
+    second.mergeSyncSnapshot(first.getSyncSnapshot());
+    expect(second.listNotes()).toHaveLength(0);
+
+    first.mergeSyncSnapshot(second.getSyncSnapshot());
+    expect(first.listNotes()).toHaveLength(0);
+    expect(first.getSyncSnapshot().deletedNotes).toContainEqual(expect.objectContaining({ id: note.id }));
+    first.close();
+    second.close();
+  });
 });

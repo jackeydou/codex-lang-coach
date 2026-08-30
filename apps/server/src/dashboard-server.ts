@@ -2,7 +2,7 @@ import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { LearningStore } from "@language-coach/core";
+import type { LearningStore, RemoteLearningSync, RemoteSyncConfig } from "@language-coach/core";
 
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -33,28 +33,49 @@ function dashboardRoot(): string {
 
 export async function startDashboardServer(
   store: LearningStore,
+  remoteSync: RemoteLearningSync,
   preferredPort = Number(process.env.LANGUAGE_COACH_PORT || 43127),
 ): Promise<{ server: Server; port: number; url: string }> {
   const staticRoot = dashboardRoot();
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url || "/", "http://127.0.0.1");
+      if (url.pathname === "/api/config" && request.method === "GET") {
+        sendJson(response, 200, { mode: "local", remoteUrl: remoteSync.remoteUrl });
+        return;
+      }
       if (url.pathname === "/api/dashboard" && request.method === "GET") {
-        sendJson(response, 200, store.getDashboardData());
+        if (remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
+        sendJson(response, 200, { ...store.getDashboardData(), sync: remoteSync.status });
+        return;
+      }
+      if (url.pathname === "/api/sync/configure" && request.method === "POST") {
+        const input = await readJson(request);
+        remoteSync.configure(input as unknown as RemoteSyncConfig);
+        await remoteSync.sync();
+        sendJson(response, 200, remoteSync.status);
+        return;
+      }
+      if (url.pathname === "/api/sync/configure" && request.method === "DELETE") {
+        remoteSync.disable();
+        sendJson(response, 200, remoteSync.status);
         return;
       }
       if (url.pathname === "/api/profile" && request.method === "PUT") {
         const input = await readJson(request);
-        sendJson(response, 200, store.updateProfile({
+        const profile = store.updateProfile({
           nativeLanguage: typeof input.nativeLanguage === "string" ? input.nativeLanguage : undefined,
           targetLanguage: typeof input.targetLanguage === "string" ? input.targetLanguage : undefined,
           coachEnabled: typeof input.coachEnabled === "boolean" ? input.coachEnabled : undefined,
-        }));
+        });
+        if (remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
+        sendJson(response, 200, profile);
         return;
       }
       if (url.pathname.startsWith("/api/notes/") && request.method === "DELETE") {
         const id = decodeURIComponent(url.pathname.slice("/api/notes/".length));
         const deleted = store.deleteNote(id);
+        if (deleted && remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
         sendJson(response, deleted ? 200 : 404, { deleted });
         return;
       }
@@ -106,5 +127,5 @@ export async function startDashboardServer(
     tryListen();
   });
 
-  return { server, port, url: `http://127.0.0.1:${port}` };
+  return { server, port, url: `http://localhost:${port}` };
 }
