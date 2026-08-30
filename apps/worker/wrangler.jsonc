@@ -1,0 +1,29 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "language-coach",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-08-29",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"directory": "../dashboard/dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": [
+			"/api/*"
+		]
+	},
+	"hyperdrive": [
+		{
+			"binding": "HYPERDRIVE",
+			"id": "58353db2c9b749b5a8dda91a392b8fbb"
+		}
+	],
+	"vars": {
+		"NEON_AUTH_URL": "https://ep-bitter-breeze-awzp75t4.neonauth.c-12.us-east-1.aws.neon.tech/neondb/auth"
+	},
+	"observability": {
+		"enabled": true
+	}
+}

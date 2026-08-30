@@ -3,4 +3,9 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  core-js: true
   esbuild: true
+  workerd: true
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/workers-types@5.20260830.1'
