@@ -4,12 +4,14 @@ import {
   EXAMPLE_CONTEXTS,
   INPUT_LANGUAGE_KINDS,
   type LearningStore,
+  type RemoteLearningSync,
 } from "@language-coach/core";
 import { z } from "zod";
 
 export interface LanguageCoachMcpOptions {
   store: LearningStore;
   startDashboard: () => Promise<{ url: string; port: number }>;
+  remoteSync: RemoteLearningSync;
 }
 
 const correctionSchema = z.object({
@@ -39,6 +41,7 @@ function result(value: unknown, message?: string) {
 export function createLanguageCoachMcpServer({
   store,
   startDashboard,
+  remoteSync,
 }: LanguageCoachMcpOptions): McpServer {
   const server = new McpServer({ name: "language-coach", version: "0.1.5" });
 
@@ -58,7 +61,11 @@ export function createLanguageCoachMcpServer({
       coachEnabled: z.boolean().optional(),
     },
     annotations: { idempotentHint: true, openWorldHint: false },
-  }, async (input) => result(store.updateProfile(input), "Language profile updated."));
+  }, async (input) => {
+    const profile = store.updateProfile(input);
+    if (remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
+    return result(profile, "Language profile updated.");
+  });
 
   server.registerTool("save_learning_note", {
     title: "Save language learning note",
@@ -77,6 +84,7 @@ export function createLanguageCoachMcpServer({
     annotations: { idempotentHint: true, openWorldHint: false },
   }, async (input) => {
     const note = store.saveNote(input);
+    if (remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
     return result(note, `Saved language-learning note ${note.id}.`);
   });
 
@@ -99,7 +107,24 @@ export function createLanguageCoachMcpServer({
     description: "Permanently delete one stored learning note by id.",
     inputSchema: { id: z.string().uuid() },
     annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
-  }, async ({ id }) => result({ deleted: store.deleteNote(id) }));
+  }, async ({ id }) => {
+    const deleted = store.deleteNote(id);
+    if (deleted && remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
+    return result({ deleted });
+  });
+
+  server.registerTool("sync_learning_notes", {
+    title: "Sync language learning notes",
+    description: "Merge local learning notes with the configured private remote database.",
+    inputSchema: {},
+    annotations: { idempotentHint: true, openWorldHint: true },
+  }, async () => {
+    if (!remoteSync.status.enabled) {
+      return result({ configured: false }, "Remote sync is not configured.");
+    }
+    const snapshot = await remoteSync.sync();
+    return result({ configured: true, notes: snapshot.notes.length }, `Synced ${snapshot.notes.length} learning notes.`);
+  });
 
   server.registerTool("start_learning_dashboard", {
     title: "Start learning dashboard",

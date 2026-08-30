@@ -5,16 +5,17 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import type {
   Correction,
-  CorrectionCategory,
   DashboardData,
   LanguageProfile,
   LearningNote,
   LearningNoteInput,
   LearningPattern,
   ProgressSummary,
+  SyncSnapshot,
   TransferExample,
   InputLanguageKind,
 } from "./types.js";
+import { calculateProgress } from "./progress.js";
 
 export interface LearningStore {
   getProfile(): LanguageProfile;
@@ -25,6 +26,8 @@ export interface LearningStore {
   deleteNote(id: string): boolean;
   getProgress(): ProgressSummary;
   getDashboardData(limit?: number): DashboardData;
+  getSyncSnapshot(): SyncSnapshot;
+  mergeSyncSnapshot(snapshot: SyncSnapshot): void;
   close(): void;
 }
 
@@ -109,6 +112,10 @@ export class SqliteLearningStore implements LearningStore {
       );
       CREATE INDEX IF NOT EXISTS idx_learning_notes_created_at
         ON learning_notes(created_at DESC);
+      CREATE TABLE IF NOT EXISTS deleted_learning_notes (
+        id TEXT PRIMARY KEY,
+        deleted_at TEXT NOT NULL
+      );
     `);
     const noteColumns = this.database.prepare("PRAGMA table_info(learning_notes)").all() as Array<{ name: string }>;
     if (!noteColumns.some((column) => column.name === "input_language")) {
@@ -209,75 +216,60 @@ export class SqliteLearningStore implements LearningStore {
   }
 
   deleteNote(id: string): boolean {
-    return this.database.prepare("DELETE FROM learning_notes WHERE id = ?").run(id).changes > 0;
+    const result = this.database.prepare("DELETE FROM learning_notes WHERE id = ?").run(id);
+    if (result.changes > 0) {
+      this.database.prepare(`INSERT INTO deleted_learning_notes (id, deleted_at) VALUES (?, ?)
+        ON CONFLICT(id) DO UPDATE SET deleted_at = excluded.deleted_at`).run(id, now());
+    }
+    return result.changes > 0;
   }
 
   getProgress(): ProgressSummary {
-    const notes = this.listNotes(500);
-    const today = new Date();
-    const dayKey = (date: Date) => date.toISOString().slice(0, 10);
-    const counts = new Map<string, number>();
-    for (const note of notes) {
-      const key = note.createdAt.slice(0, 10);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-
-    const weeklyActivity = Array.from({ length: 7 }, (_, offset) => {
-      const date = new Date(today);
-      date.setUTCHours(0, 0, 0, 0);
-      date.setUTCDate(date.getUTCDate() - (6 - offset));
-      const dateString = dayKey(date);
-      return { date: dateString, count: counts.get(dateString) ?? 0 };
-    });
-
-    let currentStreak = 0;
-    for (let offset = 0; offset < 366; offset += 1) {
-      const date = new Date(today);
-      date.setUTCDate(date.getUTCDate() - offset);
-      if ((counts.get(dayKey(date)) ?? 0) > 0) currentStreak += 1;
-      else if (offset > 0 || counts.size > 0) break;
-    }
-
-    const categoryMap = new Map<CorrectionCategory, number>();
-    const patternMap = new Map<string, { explanation: string; count: number }>();
-    const languageUse = { native: 0, target: 0, mixed: 0, other: 0 };
-    for (const note of notes) {
-      languageUse[note.inputLanguage] += 1;
-      for (const correction of note.corrections) {
-        categoryMap.set(correction.category, (categoryMap.get(correction.category) ?? 0) + 1);
-      }
-      for (const pattern of note.patterns) {
-        const key = pattern.pattern.trim().toLocaleLowerCase();
-        const item = patternMap.get(key) ?? { explanation: pattern.explanation, count: 0 };
-        item.count += 1;
-        patternMap.set(key, item);
-      }
-    }
-
-    return {
-      totalNotes: notes.length,
-      notesThisWeek: weeklyActivity.reduce((sum, item) => sum + item.count, 0),
-      activeDays: counts.size,
-      currentStreak,
-      weeklyActivity,
-      categoryCounts: [...categoryMap.entries()]
-        .map(([category, count]) => ({ category, count }))
-        .sort((a, b) => b.count - a.count),
-      recurringPatterns: [...patternMap.entries()]
-        .map(([pattern, value]) => ({ pattern, ...value }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 8),
-      languageUse: {
-        ...languageUse,
-        targetShare: languageUse.native + languageUse.target > 0
-          ? Math.round((languageUse.target / (languageUse.native + languageUse.target)) * 100)
-          : 0,
-      },
-    };
+    return calculateProgress(this.listNotes(500));
   }
 
   getDashboardData(limit = 100): DashboardData {
     return { profile: this.getProfile(), notes: this.listNotes(limit), progress: this.getProgress() };
+  }
+
+  getSyncSnapshot(): SyncSnapshot {
+    const deletedNotes = this.database
+      .prepare("SELECT id, deleted_at FROM deleted_learning_notes ORDER BY deleted_at")
+      .all() as Array<{ id: string; deleted_at: string }>;
+    return {
+      profile: this.getProfile(),
+      notes: this.listNotes(500),
+      deletedNotes: deletedNotes.map((item) => ({ id: item.id, deletedAt: item.deleted_at })),
+    };
+  }
+
+  mergeSyncSnapshot(snapshot: SyncSnapshot): void {
+    const currentProfile = this.getProfile();
+    if (snapshot.profile.updatedAt > currentProfile.updatedAt) {
+      this.database.prepare(`UPDATE profile SET native_language = ?, target_language = ?, coach_enabled = ?, updated_at = ? WHERE id = 1`)
+        .run(snapshot.profile.nativeLanguage, snapshot.profile.targetLanguage, snapshot.profile.coachEnabled ? 1 : 0, snapshot.profile.updatedAt);
+    }
+
+    for (const deleted of snapshot.deletedNotes) {
+      const existing = this.database.prepare("SELECT deleted_at FROM deleted_learning_notes WHERE id = ?").get(deleted.id) as { deleted_at: string } | undefined;
+      if (!existing || deleted.deletedAt > existing.deleted_at) {
+        this.database.prepare(`INSERT INTO deleted_learning_notes (id, deleted_at) VALUES (?, ?)
+          ON CONFLICT(id) DO UPDATE SET deleted_at = excluded.deleted_at`).run(deleted.id, deleted.deletedAt);
+      }
+      this.database.prepare("DELETE FROM learning_notes WHERE id = ?").run(deleted.id);
+    }
+
+    for (const note of snapshot.notes) {
+      const tombstone = this.database.prepare("SELECT 1 FROM deleted_learning_notes WHERE id = ?").get(note.id);
+      if (tombstone) continue;
+      this.database.prepare(`INSERT OR IGNORE INTO learning_notes (
+        id, turn_id, input_language, original_expression, polished_expression, corrections_json,
+        patterns_json, examples_json, native_language, target_language, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(note.id, note.turnId ?? null, note.inputLanguage, note.originalExpression, note.polishedExpression,
+          JSON.stringify(note.corrections), JSON.stringify(note.patterns), JSON.stringify(note.examples),
+          note.nativeLanguage, note.targetLanguage, note.createdAt);
+    }
   }
 
   close(): void {
