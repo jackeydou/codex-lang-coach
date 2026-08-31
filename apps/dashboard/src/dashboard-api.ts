@@ -1,0 +1,103 @@
+import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, RemoteSyncConfig } from "@language-coach/core"
+
+type ProfileUpdate = Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">
+
+export class UnauthorizedError extends Error {
+  constructor() {
+    super("Authentication required.")
+    this.name = "UnauthorizedError"
+  }
+}
+
+async function requestJson<T>(url: string, options: RequestInit = {}, token?: string): Promise<T> {
+  let response: Response
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        accept: "application/json",
+        ...(options.body ? { "content-type": "application/json" } : {}),
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    })
+  } catch {
+    throw new Error("The API could not be reached. Check your connection and site configuration.")
+  }
+
+  if (response.status === 401) throw new UnauthorizedError()
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: string }
+    throw new Error(body.error || `Request failed with status ${response.status}.`)
+  }
+  return response.json() as Promise<T>
+}
+
+export async function loadDashboardRuntime(): Promise<DashboardRuntimeConfig> {
+  const current = await requestJson<DashboardRuntimeConfig>("/api/config")
+  if (current.authUrl) return current
+
+  try {
+    const remote = await requestJson<DashboardRuntimeConfig>(`${current.remoteUrl.replace(/\/$/, "")}/api/config`)
+    return remote.authUrl ? { ...current, authUrl: remote.authUrl } : current
+  } catch (error) {
+    if (current.mode === "local") return current
+    throw error
+  }
+}
+
+export class DashboardApi {
+  constructor(
+    readonly runtime: DashboardRuntimeConfig,
+    private readonly accessToken?: string,
+  ) {}
+
+  private runtimeToken(): string | undefined {
+    return this.runtime.mode === "remote" ? this.accessToken : undefined
+  }
+
+  getDashboard(): Promise<DashboardData> {
+    return requestJson<DashboardData>("/api/dashboard", {}, this.runtimeToken())
+  }
+
+  updateProfile(profile: ProfileUpdate): Promise<LanguageProfile> {
+    return requestJson<LanguageProfile>(
+      "/api/profile",
+      { method: "PUT", body: JSON.stringify(profile) },
+      this.runtimeToken(),
+    )
+  }
+
+  deleteNote(id: string): Promise<{ deleted: boolean }> {
+    return requestJson(`/api/notes/${encodeURIComponent(id)}`, { method: "DELETE" }, this.runtimeToken())
+  }
+
+  async enableLocalSync(sessionToken: string): Promise<void> {
+    this.assertLocalMode()
+    const remoteUrl = this.runtime.remoteUrl.replace(/\/$/, "")
+    const created = await requestJson<{ token: string; userId: string }>(
+      `${remoteUrl}/api/sync-tokens`,
+      { method: "POST", body: JSON.stringify({ label: "Language Coach local dashboard" }) },
+      sessionToken,
+    )
+    const config: RemoteSyncConfig = { remoteUrl, token: created.token, userId: created.userId }
+    await requestJson("/api/sync/configure", { method: "POST", body: JSON.stringify(config) })
+  }
+
+  async disableLocalSync(sessionToken: string): Promise<void> {
+    this.assertLocalMode()
+    const remoteUrl = this.runtime.remoteUrl.replace(/\/$/, "")
+    await requestJson(`${remoteUrl}/api/sync-tokens`, { method: "DELETE" }, sessionToken)
+    await requestJson("/api/sync/configure", { method: "DELETE" })
+  }
+
+  private assertLocalMode(): void {
+    if (this.runtime.mode !== "local") {
+      throw new Error("Sync settings can only be changed from the local dashboard.")
+    }
+  }
+}
+
+export function createDashboardApi(runtime: DashboardRuntimeConfig, accessToken?: string): DashboardApi {
+  return new DashboardApi(runtime, accessToken)
+}

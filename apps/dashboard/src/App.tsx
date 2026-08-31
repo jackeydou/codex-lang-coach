@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
-import type { DashboardData, LanguageProfile, LearningNote } from "@language-coach/core"
-import { ActivityIcon, ArrowLeftIcon, BookOpenCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, LanguagesIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
+import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, LearningNote, SyncStatus } from "@language-coach/core"
+import { ActivityIcon, ArrowLeftIcon, BookOpenCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, LanguagesIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
+import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 
+import { AuthPage } from "@/AuthPage"
+import { initializeAuth, readAuthSession, type AuthClient, type AuthUser } from "@/auth-client"
 import { ActivityChart, CategoryChart, LanguageUseChart } from "@/components/analytics-charts"
+import { LandingPage } from "@/LandingPage"
+import { LegalPage } from "@/LegalPage"
 import { NoteFlashcard } from "@/components/note-flashcard"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -13,15 +18,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
-
-async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(url, { ...options, headers: { "content-type": "application/json", ...options?.headers } })
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { error?: string }
-    throw new Error(body.error || `Request failed with status ${response.status}.`)
-  }
-  return response.json() as Promise<T>
-}
+import { createDashboardApi, type DashboardApi, UnauthorizedError } from "@/dashboard-api"
 
 function LoadingDashboard() {
   return (
@@ -210,12 +207,47 @@ function SettingsCard({ profile, saving, onSave }: {
   )
 }
 
+function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
+  mode: "local" | "remote"
+  sync?: SyncStatus
+  user?: AuthUser
+  changing: boolean
+  onToggle: (enabled: boolean) => Promise<void>
+  onSignOut: () => Promise<void>
+}) {
+  const enabled = mode === "remote" || Boolean(sync?.enabled)
+  return (
+    <Card id="account-sync">
+      <CardHeader>
+        <CardTitle>Login &amp; sync</CardTitle>
+        <CardDescription>Keep a private copy of your notes in Neon so the dashboard works on this computer and on the web.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-5">
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldTitle>{enabled ? "Account sync is on" : "Use this device only"}</FieldTitle>
+            <FieldDescription>
+              {enabled
+                ? `${user?.email ? `Signed in as ${user.email}.` : "Connected to your private account."} Only this account can read its remote notes.`
+                : "Notes stay in local SQLite. Turning this on requires registration and email verification."}
+            </FieldDescription>
+          </FieldContent>
+          <Switch checked={enabled} disabled={changing || mode === "remote"} onCheckedChange={(checked) => void onToggle(checked)} aria-label="Enable login and sync" />
+        </Field>
+        {sync?.lastSyncedAt && <p className="text-sm text-muted-foreground">Last synced {new Date(sync.lastSyncedAt).toLocaleString()}.</p>}
+        {sync?.error && <p className="text-sm text-destructive" role="alert">{sync.error}</p>}
+        {user && <div><Button variant="outline" onClick={() => void onSignOut()}><LogInIcon /> Sign out</Button></div>}
+      </CardContent>
+    </Card>
+  )
+}
+
 function DashboardHeader({ settingsPage = false }: { settingsPage?: boolean }) {
   return (
     <header className="dashboard-header">
       <Brand />
       <Button variant="ghost" asChild>
-        <a href={settingsPage ? "/" : "/settings"}>
+        <a href={settingsPage ? "/dashboard" : "/dashboard/settings"}>
           {settingsPage ? <ArrowLeftIcon data-icon="inline-start" /> : <Settings2Icon data-icon="inline-start" />}
           {settingsPage ? "Back to notes" : "Settings"}
         </a>
@@ -268,10 +300,15 @@ function NotesPage({ data, onDelete }: { data: DashboardData; onDelete: (id: str
   )
 }
 
-function SettingsPage({ data, saving, onSave }: {
+function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncToggle, onSignOut }: {
   data: DashboardData
   saving: boolean
   onSave: (profile: Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">) => Promise<void>
+  mode: "local" | "remote"
+  user?: AuthUser
+  syncChanging: boolean
+  onSyncToggle: (enabled: boolean) => Promise<void>
+  onSignOut: () => Promise<void>
 }) {
   const topCategory = data.progress.categoryCounts[0]
 
@@ -319,31 +356,115 @@ function SettingsPage({ data, saving, onSave }: {
           </Card>
         </section>
 
+        <AccountSyncCard mode={mode} sync={data.sync} user={user} changing={syncChanging} onToggle={onSyncToggle} onSignOut={onSignOut} />
         <SettingsCard profile={data.profile} saving={saving} onSave={onSave} />
       </main>
     </div>
   )
 }
 
-export function App() {
+export function DashboardApp() {
+  const navigate = useNavigate()
   const [data, setData] = useState<DashboardData>()
+  const [runtime, setRuntime] = useState<DashboardRuntimeConfig>()
+  const [auth, setAuth] = useState<AuthClient>()
+  const [user, setUser] = useState<AuthUser>()
+  const [accessToken, setAccessToken] = useState("")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
+  const [syncChanging, setSyncChanging] = useState(false)
+  const [authRequired, setAuthRequired] = useState(false)
+  const api = useMemo(() => runtime ? createDashboardApi(runtime, accessToken || undefined) : undefined, [accessToken, runtime])
 
-  async function load() {
+  async function load(client = api) {
+    if (!client) return
     try {
       setError("")
-      setData(await fetchJson<DashboardData>("/api/dashboard"))
+      setData(await client.getDashboard())
     } catch (loadError) {
+      if (loadError instanceof UnauthorizedError) {
+        setAuthRequired(true)
+        setData(undefined)
+        return
+      }
       setError(loadError instanceof Error ? loadError.message : "The dashboard could not be loaded.")
     }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void (async () => {
+      try {
+        const { runtime: nextRuntime, auth: nextAuth } = await initializeAuth()
+        setRuntime(nextRuntime)
+        setAuth(nextAuth)
+
+        const session = nextAuth ? await readAuthSession(nextAuth) : undefined
+        if (session) {
+          setAccessToken(session.token)
+          setUser(session.user)
+          await load(createDashboardApi(nextRuntime, session.token))
+        } else if (nextRuntime.mode === "remote") {
+          setAuthRequired(true)
+        } else {
+          await load(createDashboardApi(nextRuntime))
+        }
+      } catch (initializeError) {
+        setError(initializeError instanceof Error ? initializeError.message : "The dashboard could not be initialized.")
+      }
+    })()
+  }, [])
+
+  function setSyncError(message: string) {
+    setData((current) => current ? {
+      ...current,
+      sync: { enabled: Boolean(current.sync?.enabled), ...current.sync, error: message },
+    } : current)
+  }
+
+  async function enableSync(client: DashboardApi, token: string, nextUser: AuthUser) {
+    await client.enableLocalSync(token)
+    setUser(nextUser)
+    await load(client)
+  }
+
+  async function disableSync(client: DashboardApi, token: string) {
+    await client.disableLocalSync(token)
+    await load(client)
+  }
+
+  async function toggleSync(enabled: boolean) {
+    if (!api) return
+    if (!auth || !accessToken || !user) {
+      const intent = enabled ? "sync" : "disable"
+      navigate(`/sign-in?intent=${intent}&returnTo=${encodeURIComponent("/dashboard/settings")}`)
+      return
+    }
+    setSyncChanging(true)
+    try {
+      if (enabled) await enableSync(api, accessToken, user)
+      else await disableSync(api, accessToken)
+    } catch (actionError) {
+      setSyncError(actionError instanceof Error ? actionError.message : "The sync setting could not be changed.")
+    } finally {
+      setSyncChanging(false)
+    }
+  }
+
+  async function signOut() {
+    await auth?.adapter.signOut()
+    setAccessToken("")
+    setUser(undefined)
+    if (runtime?.mode === "remote") {
+      setData(undefined)
+      navigate("/sign-in", { replace: true })
+    }
+  }
+
   async function saveProfile(profile: Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">) {
+    if (!api) return
     setSaving(true)
     try {
-      const updated = await fetchJson<LanguageProfile>("/api/profile", { method: "PUT", body: JSON.stringify(profile) })
+      const updated = await api.updateProfile(profile)
       setData((current) => current ? { ...current, profile: updated } : current)
     } finally {
       setSaving(false)
@@ -351,11 +472,13 @@ export function App() {
   }
 
   async function deleteNote(id: string) {
-    await fetchJson(`/api/notes/${encodeURIComponent(id)}`, { method: "DELETE" })
+    if (!api) return
+    await api.deleteNote(id)
     await load()
   }
 
-  if (!data && !error) return <LoadingDashboard />
+  if (authRequired) return <Navigate to="/sign-in?returnTo=%2Fdashboard" replace />
+  if ((!data && !error) || !runtime) return <LoadingDashboard />
   if (!data) {
     return (
       <main className="grid min-h-svh place-items-center p-6">
@@ -367,14 +490,30 @@ export function App() {
     )
   }
 
-  const settingsPage = window.location.pathname === "/settings" || window.location.pathname.startsWith("/settings/")
+  const settingsPage = window.location.pathname === "/dashboard/settings" || window.location.pathname.startsWith("/dashboard/settings/")
 
   return (
     <TooltipProvider>
       <a className="skip-link" href="#main-content">Skip to content</a>
       {settingsPage
-        ? <SettingsPage data={data} saving={saving} onSave={saveProfile} />
+        ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} />
         : <NotesPage data={data} onDelete={deleteNote} />}
     </TooltipProvider>
+  )
+}
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/sign-in" element={<AuthPage mode="sign-in" />} />
+        <Route path="/sign-up" element={<AuthPage mode="sign-up" />} />
+        <Route path="/privacy-policy" element={<LegalPage kind="privacy" />} />
+        <Route path="/terms" element={<LegalPage kind="terms" />} />
+        <Route path="/dashboard/*" element={<DashboardApp />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
