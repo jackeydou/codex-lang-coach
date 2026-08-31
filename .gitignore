@@ -8,3 +8,13 @@ packages/*/dist/
 *.sqlite-wal
 .language-coach/
 coverage/
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+mise.local.toml
+mise.*.local.toml
+.wrangler/
+.neon/
+.pnpm-store/

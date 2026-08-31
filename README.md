@@ -17,6 +17,10 @@ The project includes a Codex plugin, an MCP interface, a local Node.js runtime, 
 - Provides progress summaries and correction-category trends.
 - Includes a local dashboard for reviewing and deleting learning notes.
 - Stores data locally in SQLite by default.
+- Lets users opt into registration, verified-email login, and remote sync.
+- Stores remote notes in Neon Postgres through Cloudflare Hyperdrive.
+- Enforces account ownership in both the Worker API and Postgres row-level security policies.
+- Deploys the authenticated dashboard as a Cloudflare Worker website.
 - Avoids saving unrelated task context, files, or task answers.
 
 ## Installation
@@ -103,7 +107,8 @@ The pnpm workspace separates product source code from the assembled Codex plugin
 agent-plugin-lang-coach/
 ├── apps/
 │   ├── dashboard/          # React and Vite dashboard
-│   └── server/             # Node.js runtime, HTTP API, and process entry points
+│   ├── server/             # Local Node.js runtime and HTTP API
+│   └── worker/             # Remote API, Neon migration, and Cloudflare deployment
 ├── packages/
 │   ├── core/               # Domain types, storage, and shared logic
 │   ├── mcp/                # MCP schemas, tools, and handlers
@@ -123,6 +128,7 @@ The package boundaries are intentional:
 - `@language-coach/mcp` defines transport-independent MCP tools and handlers.
 - `@language-coach/server` owns process startup, MCP stdio transport, the dashboard API, static assets, and graceful shutdown.
 - `@language-coach/dashboard` owns the browser interface.
+- `@language-coach/worker` owns the authenticated remote API and Hyperdrive connection.
 - `@language-coach/plugin` contains only the source scaffold needed to assemble the Codex plugin.
 
 The generated `dist/language-coach` directory is the only installable artifact. Source projects must not write build output into the plugin scaffold.
@@ -161,6 +167,20 @@ pnpm build:plugin
 
 `pnpm build` is an alias for the same full plugin build. Both commands assemble a clean, self-contained distribution at `dist/language-coach`.
 
+## Mise tasks
+
+[`mise.toml`](./mise.toml) pins Node and pnpm and provides shortcuts for the common project workflows:
+
+```bash
+mise install
+mise tasks ls
+mise run dev
+mise run verify
+mise run worker:dev
+```
+
+Machine-specific paths and secrets belong in the gitignored `mise.local.toml`. Uncomment and fill in `LANGUAGE_COACH_REMOTE_URL` or `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` there when remote sync or local Hyperdrive access is needed.
+
 ## Local dashboard
 
 Run the built dashboard:
@@ -169,7 +189,7 @@ Run the built dashboard:
 pnpm dashboard
 ```
 
-The server starts at `http://127.0.0.1:43127` by default. If the port is occupied, it tries the next available port through `43146`.
+The server starts at `http://localhost:43127` by default. If the port is occupied, it tries the next available port through `43146`.
 
 Set a different starting port when needed:
 
@@ -216,6 +236,47 @@ A learning note may contain:
 The schema does not include fields for unrelated task details, files, or task answers. Language Coach saves a note only when an expression has a meaningful error, unnatural wording, a contextual problem, or a useful reusable pattern. Optional stylistic rewrites alone do not justify persistence.
 
 Notes can be deleted through the dashboard or the MCP interface.
+
+## Cloudflare sync and hosting
+
+The hosted dashboard uses Cloudflare Workers Static Assets, Cloudflare Hyperdrive, Neon Postgres, and Neon Auth. Users can register with email and password or continue with Google or GitHub. Email/password accounts confirm their email before the hosted API returns any learning data.
+
+Remote tables contain a `user_id` on every row. The Worker derives that ID from a verified Neon JWT or a hashed local-device sync token, sets it in the Postgres transaction, and row-level security enforces the same ownership rule in the database. The Hyperdrive connection must use the limited `language_coach_app` role rather than `neondb_owner`, because owner roles bypass RLS.
+
+Local use remains account-free by default. Open **Settings → Login & sync** to register or sign in and upload the local notes for that account. The local device credential is stored at `~/.language-coach/remote-sync.json` with owner-only permissions. Turning sync off re-authenticates, revokes the remote device tokens, and removes the local credential. Deletion tombstones prevent deleted notes from reappearing during a later merge.
+
+### Provision Neon and Hyperdrive
+
+1. Create a Neon project and enable Neon Auth for its main branch.
+2. Enable email/password registration, require email verification, and add the local and deployed dashboard URLs as trusted origins.
+3. Enable Google and GitHub OAuth for the branch. Google can use Neon's shared credentials while developing; GitHub requires a GitHub OAuth app. For production, use your own credentials for both providers and register `{NEON_AUTH_URL}/callback/google` and `{NEON_AUTH_URL}/callback/github` as their provider callback URLs.
+4. Create a non-owner Postgres role named `language_coach_app` with a strong password.
+5. Apply [`apps/worker/migrations/0001_neon.sql`](./apps/worker/migrations/0001_neon.sql) as `neondb_owner`.
+6. Create a Cloudflare Hyperdrive configuration from the direct, unpooled Neon connection string for `language_coach_app`.
+7. Put the Hyperdrive configuration ID and Neon Auth URL in [`apps/worker/wrangler.jsonc`](./apps/worker/wrangler.jsonc).
+
+Set `NEON_PRODUCTION_DATABASE_URL` in the gitignored `mise.local.toml` to a direct, unpooled owner/admin connection string. Apply pending production migrations with:
+
+```bash
+mise run db:migrate:production
+```
+
+The task asks for confirmation, verifies the limited runtime role, and records each applied file from `apps/worker/migrations`. Do not use the `language_coach_app` connection for migrations.
+
+For local Worker development, set the documented Hyperdrive override without committing it:
+
+```bash
+export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE='postgresql://language_coach_app:...@.../neondb?sslmode=require'
+pnpm --filter @language-coach/worker dev
+```
+
+Deploy from the repository root:
+
+```bash
+pnpm deploy:cloudflare
+```
+
+The deployed site works at `https://language-coach.pluginsfoundry.dev`. The built local dashboard remains available at `http://localhost:43127`. Set `LANGUAGE_COACH_REMOTE_URL` only when the local build should discover a different deployed Worker.
 
 ## Language settings
 

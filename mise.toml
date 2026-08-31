@@ -1,0 +1,54 @@
+[tools]
+node = "24.15.0"
+pnpm = "11.19.0"
+
+[env]
+LANGUAGE_COACH_PORT = "43127"
+
+[tasks.install]
+description = "Install workspace dependencies"
+run = "pnpm install"
+
+[tasks.dev]
+description = "Run the local MCP server and dashboard with live reload"
+run = "pnpm dev"
+
+[tasks.dashboard]
+description = "Build the plugin and open its local dashboard server"
+run = [
+  "pnpm build",
+  "pnpm dashboard",
+]
+
+[tasks.check]
+description = "Type-check every workspace package"
+run = "pnpm check"
+
+[tasks.test]
+description = "Run all workspace tests"
+run = "pnpm test"
+
+[tasks.build]
+description = "Build the complete plugin artifact"
+run = "pnpm build"
+
+[tasks.verify]
+description = "Run type checks, tests, and the production build"
+run = [
+  "pnpm check",
+  "pnpm test",
+  "pnpm build",
+]
+
+[tasks."worker:dev"]
+description = "Build the dashboard and run the Cloudflare Worker locally"
+run = "pnpm --filter @language-coach/worker dev"
+
+[tasks."cloudflare:whoami"]
+description = "Show the active Cloudflare account"
+run = "pnpm --filter @language-coach/worker exec wrangler whoami"
+
+[tasks."cloudflare:deploy"]
+description = "Build and deploy the website and API Worker to Cloudflare"
+confirm = "Deploy Language Coach to Cloudflare?"
+run = "pnpm deploy:cloudflare"
