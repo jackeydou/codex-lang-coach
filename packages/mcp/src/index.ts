@@ -63,7 +63,7 @@ export function createLanguageCoachMcpServer({
     annotations: { idempotentHint: true, openWorldHint: false },
   }, async (input) => {
     const profile = store.updateProfile(input);
-    if (remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
+    if (remoteSync.status.enabled) void remoteSync.sync().catch(() => undefined);
     return result(profile, "Language profile updated.");
   });
 
@@ -84,7 +84,7 @@ export function createLanguageCoachMcpServer({
     annotations: { idempotentHint: true, openWorldHint: false },
   }, async (input) => {
     const note = store.saveNote(input);
-    if (remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
+    if (remoteSync.status.enabled) void remoteSync.sync().catch(() => undefined);
     return result(note, `Saved language-learning note ${note.id}.`);
   });
 
@@ -109,21 +109,21 @@ export function createLanguageCoachMcpServer({
     annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: false },
   }, async ({ id }) => {
     const deleted = store.deleteNote(id);
-    if (deleted && remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
+    if (deleted && remoteSync.status.enabled) void remoteSync.sync().catch(() => undefined);
     return result({ deleted });
   });
 
   server.registerTool("sync_learning_notes", {
     title: "Sync language learning notes",
-    description: "Merge local learning notes with the configured private remote database.",
+    description: "Upload local learning notes to the configured private remote database.",
     inputSchema: {},
     annotations: { idempotentHint: true, openWorldHint: true },
   }, async () => {
     if (!remoteSync.status.enabled) {
       return result({ configured: false }, "Remote sync is not configured.");
     }
-    const snapshot = await remoteSync.sync();
-    return result({ configured: true, notes: snapshot.notes.length }, `Synced ${snapshot.notes.length} learning notes.`);
+    const upload = await remoteSync.sync();
+    return result({ configured: true, notes: upload.acceptedNotes, deletions: upload.acceptedDeletions }, `Uploaded ${upload.acceptedNotes} learning notes.`);
   });
 
   server.registerTool("start_learning_dashboard", {

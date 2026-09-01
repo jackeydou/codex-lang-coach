@@ -78,30 +78,33 @@ describe("SqliteLearningStore", () => {
     store.close();
   });
 
-  it("merges remote notes and keeps deletions deleted", () => {
-    const first = createStore();
-    const second = createStore();
-    const note = first.saveNote({
-      turnId: "sync-turn",
-      inputLanguage: "target",
-      originalExpression: "I look forward to meet you.",
-      polishedExpression: "I look forward to meeting you.",
-      corrections: [],
-      patterns: [],
-      examples: [],
-    });
+  it("includes every local note and deletion in the upload snapshot", () => {
+    const store = createStore();
+    let deletedId = "";
+    for (let index = 0; index < 525; index += 1) {
+      const note = store.saveNote({
+        turnId: `sync-turn-${index}`,
+        inputLanguage: "target",
+        originalExpression: "I look forward to meet you.",
+        polishedExpression: "I look forward to meeting you.",
+        corrections: [],
+        patterns: [],
+        examples: [],
+      });
+      if (index === 0) deletedId = note.id;
+    }
 
-    second.mergeSyncSnapshot(first.getSyncSnapshot());
-    expect(second.listNotes().map((item) => item.id)).toContain(note.id);
-
-    expect(first.deleteNote(note.id)).toBe(true);
-    second.mergeSyncSnapshot(first.getSyncSnapshot());
-    expect(second.listNotes()).toHaveLength(0);
-
-    first.mergeSyncSnapshot(second.getSyncSnapshot());
-    expect(first.listNotes()).toHaveLength(0);
-    expect(first.getSyncSnapshot().deletedNotes).toContainEqual(expect.objectContaining({ id: note.id }));
-    first.close();
-    second.close();
+    expect(store.deleteNote(deletedId)).toBe(true);
+    const snapshot = store.getSyncSnapshot();
+    expect(snapshot.notes).toHaveLength(524);
+    expect(snapshot.deletedNotes).toContainEqual(expect.objectContaining({ id: deletedId }));
+    expect(store.getProgress().totalNotes).toBe(524);
+    const firstPage = store.getDashboardData(50);
+    const secondPage = store.getDashboardData(50, firstPage.notesPage?.nextCursor);
+    expect(firstPage.notes).toHaveLength(50);
+    expect(firstPage.notesPage?.hasMore).toBe(true);
+    expect(secondPage.notes).toHaveLength(50);
+    expect(secondPage.notes.some((note) => firstPage.notes.some((first) => first.id === note.id))).toBe(false);
+    store.close();
   });
 });

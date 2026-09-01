@@ -64,7 +64,7 @@ describe("DashboardApi", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(dashboard))
 
     await expect(createDashboardApi(runtime, "unused-token").getDashboard()).resolves.toEqual(dashboard)
-    expect(fetchMock).toHaveBeenCalledWith("/api/dashboard", expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith("/api/dashboard?limit=50", expect.objectContaining({
       headers: expect.not.objectContaining({ authorization: expect.anything() }),
     }))
   })
@@ -74,7 +74,7 @@ describe("DashboardApi", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(dashboard))
 
     await createDashboardApi(runtime, "session-jwt").getDashboard()
-    expect(fetchMock).toHaveBeenCalledWith("/api/dashboard", expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith("/api/dashboard?limit=50", expect.objectContaining({
       headers: expect.objectContaining({ authorization: "Bearer session-jwt" }),
     }))
   })
@@ -82,7 +82,10 @@ describe("DashboardApi", () => {
   it("creates a remote device token before enabling sync on the local API", async () => {
     const runtime: DashboardRuntimeConfig = { mode: "local", remoteUrl: "https://remote.example/" }
     const fetchMock = vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(json({ token: "device-token", userId: "user-1" }))
+      .mockImplementationOnce(async (_url, options) => {
+        const input = JSON.parse(String(options?.body)) as { deviceId: string; deviceName: string }
+        return json({ token: "device-token", userId: "user-1", ...input })
+      })
       .mockResolvedValueOnce(json({ enabled: true }))
 
     await createDashboardApi(runtime).enableLocalSync("session-jwt")
@@ -91,8 +94,27 @@ describe("DashboardApi", () => {
       headers: expect.objectContaining({ authorization: "Bearer session-jwt" }),
     }))
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/sync/configure", expect.objectContaining({
-      body: JSON.stringify({ remoteUrl: "https://remote.example", token: "device-token", userId: "user-1" }),
+      body: expect.stringContaining('"deviceId"'),
     }))
+    const tokenRequest = fetchMock.mock.calls[0]?.[1]
+    const tokenInput = JSON.parse(String(tokenRequest?.body)) as { deviceId: string; deviceName: string }
+    expect(tokenInput.deviceId).toMatch(/^[0-9a-f-]{36}$/)
+    const configureRequest = fetchMock.mock.calls[1]?.[1]
+    expect(JSON.parse(String(configureRequest?.body))).toEqual({
+      remoteUrl: "https://remote.example",
+      token: "device-token",
+      userId: "user-1",
+      ...tokenInput,
+    })
+  })
+
+  it("passes the next-page cursor to the dashboard endpoint", async () => {
+    const runtime: DashboardRuntimeConfig = { mode: "remote", remoteUrl: "https://remote.example" }
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(dashboard))
+
+    await createDashboardApi(runtime, "session-jwt").getDashboard("next page")
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/dashboard?limit=50&cursor=next+page", expect.any(Object))
   })
 
   it("normalizes unauthorized responses", async () => {
