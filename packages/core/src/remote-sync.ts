@@ -2,11 +2,29 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import * as tls from "node:tls";
 import type { LearningStore } from "./storage.js";
 import type { RemoteSyncConfig, SyncStatus, SyncUploadBatch, SyncUploadResult } from "./types.js";
 
 const DEFAULT_REMOTE_URL = "https://language-coach.pluginsfoundry.dev";
-const SYNC_BATCH_SIZE = 100;
+const SYNC_BATCH_SIZE = 20;
+const SYNC_USER_AGENT = "Language-Coach/0.1 (+https://language-coach.pluginsfoundry.dev)";
+
+function useSystemCertificateAuthorities(): void {
+  const tlsWithSystemCa = tls as typeof tls & {
+    getCACertificates?: (type?: "default" | "system" | "bundled" | "extra") => string[];
+    setDefaultCACertificates?: (certs: string[]) => void;
+  };
+  if (!tlsWithSystemCa.getCACertificates || !tlsWithSystemCa.setDefaultCACertificates) return;
+
+  const certificates = new Set([
+    ...tlsWithSystemCa.getCACertificates("default"),
+    ...tlsWithSystemCa.getCACertificates("system"),
+  ]);
+  tlsWithSystemCa.setDefaultCACertificates([...certificates]);
+}
+
+useSystemCertificateAuthorities();
 
 export function resolveRemoteSyncConfigPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.LANGUAGE_COACH_SYNC_CONFIG_PATH || join(homedir(), ".language-coach", "remote-sync.json");
@@ -58,13 +76,14 @@ export class RemoteLearningSync {
 
   get status(): SyncStatus {
     const config = this.config;
+    const checkpoint = config ? this.store.getSyncCheckpoint(config.remoteUrl, config.userId) : undefined;
     return {
       enabled: Boolean(config),
       userId: config?.userId,
       deviceId: config?.deviceId,
       deviceName: config?.deviceName,
       remoteUrl: config?.remoteUrl || this.remoteUrl,
-      lastSyncedAt: this.lastSyncedAt,
+      lastSyncedAt: checkpoint?.lastSyncedAt ?? this.lastSyncedAt,
       error: this.lastError,
       state: this.state,
       completedItems: this.completedItems,
@@ -82,6 +101,7 @@ export class RemoteLearningSync {
     }
     mkdirSync(dirname(this.configPath), { recursive: true, mode: 0o700 });
     writeFileSync(this.configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+    this.lastSyncedAt = this.store.getSyncCheckpoint(config.remoteUrl, config.userId).lastSyncedAt;
   }
 
   disable(): void {
@@ -117,7 +137,11 @@ export class RemoteLearningSync {
   private async uploadBatch(config: RemoteSyncConfig, batch: SyncUploadBatch): Promise<SyncUploadResult> {
     const response = await fetch(`${config.remoteUrl.replace(/\/$/, "")}/api/sync`, {
       method: "POST",
-      headers: { authorization: `Sync ${config.token}`, "content-type": "application/json" },
+      headers: {
+        authorization: `Sync ${config.token}`,
+        "content-type": "application/json",
+        "user-agent": SYNC_USER_AGENT,
+      },
       body: JSON.stringify(batch),
     });
     if (!response.ok) {
@@ -130,7 +154,7 @@ export class RemoteLearningSync {
   private async performSync(): Promise<SyncUploadResult> {
     const config = this.config;
     if (!config) throw new Error("Login and sync are not enabled.");
-    const snapshot = this.store.getSyncSnapshot();
+    const snapshot = this.store.getSyncSnapshot(config.remoteUrl, config.userId);
     const batches: Array<Pick<SyncUploadBatch, "notes" | "deletedNotes">> = [];
     for (let offset = 0; offset < snapshot.deletedNotes.length; offset += SYNC_BATCH_SIZE) {
       batches.push({ notes: [], deletedNotes: snapshot.deletedNotes.slice(offset, offset + SYNC_BATCH_SIZE) });
@@ -138,7 +162,7 @@ export class RemoteLearningSync {
     for (let offset = 0; offset < snapshot.notes.length; offset += SYNC_BATCH_SIZE) {
       batches.push({ notes: snapshot.notes.slice(offset, offset + SYNC_BATCH_SIZE), deletedNotes: [] });
     }
-    if (!batches.length) batches.push({ notes: [], deletedNotes: [] });
+    if (!batches.length && snapshot.profile) batches.push({ notes: [], deletedNotes: [] });
 
     this.state = "syncing";
     this.completedItems = 0;
@@ -147,6 +171,13 @@ export class RemoteLearningSync {
     let acceptedDeletions = 0;
     let syncedAt = new Date().toISOString();
     try {
+      if (!batches.length) {
+        this.store.markSyncCheckpoint(config.remoteUrl, config.userId, snapshot.throughRevision, syncedAt);
+        this.lastSyncedAt = syncedAt;
+        this.lastError = undefined;
+        this.state = "idle";
+        return { deviceId: config.deviceId, acceptedNotes, acceptedDeletions, syncedAt };
+      }
       for (const [index, contents] of batches.entries()) {
         const result = await this.uploadBatch(config, {
           deviceId: config.deviceId,
@@ -159,6 +190,7 @@ export class RemoteLearningSync {
         syncedAt = result.syncedAt;
         this.completedItems += contents.notes.length + contents.deletedNotes.length;
       }
+      this.store.markSyncCheckpoint(config.remoteUrl, config.userId, snapshot.throughRevision, syncedAt);
       this.lastSyncedAt = syncedAt;
       this.lastError = undefined;
       this.state = "idle";
