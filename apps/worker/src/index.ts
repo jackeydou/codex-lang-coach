@@ -226,10 +226,17 @@ async function mergeSnapshot(client: Client, userId: string, snapshot: SyncSnaps
 
 async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "OPTIONS") {
-    return json(request, null, 204, {
-      "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
-      "access-control-allow-headers": "authorization,content-type",
-      "access-control-max-age": "86400",
+    const origin = corsOrigin(request);
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "access-control-allow-headers": "authorization,content-type",
+        "access-control-max-age": "86400",
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+        ...(origin ? { "access-control-allow-origin": origin, vary: "Origin" } : {}),
+      },
     });
   }
   if (url.pathname === "/api/config" && request.method === "GET") {

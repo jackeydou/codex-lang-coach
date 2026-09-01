@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react"
 import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, LearningNote, SyncStatus } from "@language-coach/core"
-import { ActivityIcon, ArrowLeftIcon, BookOpenCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, LanguagesIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
+import { ActivityIcon, ArrowLeftIcon, BookOpenCheckIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloudIcon, FlameIcon, LanguagesIcon, LaptopIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 
 import { AuthPage } from "@/AuthPage"
@@ -216,27 +216,76 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
   onSignOut: () => Promise<void>
 }) {
   const enabled = mode === "remote" || Boolean(sync?.enabled)
+  const statusTitle = changing
+    ? "Updating storage…"
+    : enabled
+      ? "Sync is on"
+      : "Stored on this computer"
+  const statusDescription = enabled
+    ? user?.email
+      ? `Signed in as ${user.email}. New and existing notes sync with your private account.`
+      : "This device is connected to your private account. New and existing notes sync automatically."
+    : user
+      ? `You are signed in as ${user.email}, but these notes have not been uploaded.`
+      : "Only this computer can access these notes. Nothing is uploaded."
+
   return (
     <Card id="account-sync">
       <CardHeader>
-        <CardTitle>Login &amp; sync</CardTitle>
-        <CardDescription>Keep a private copy of your notes in Neon so the dashboard works on this computer and on the web.</CardDescription>
+        <CardTitle>{mode === "remote" ? "Account & sync" : "Where should your notes be saved?"}</CardTitle>
+        <CardDescription>
+          {mode === "remote"
+            ? "This web dashboard shows the notes saved to your private account."
+            : "Choose whether this dashboard stays on this computer or syncs through your private account."}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="flex flex-col gap-5">
-        <Field orientation="horizontal">
-          <FieldContent>
-            <FieldTitle>{enabled ? "Account sync is on" : "Use this device only"}</FieldTitle>
-            <FieldDescription>
-              {enabled
-                ? `${user?.email ? `Signed in as ${user.email}.` : "Connected to your private account."} Only this account can read its remote notes.`
-                : "Notes stay in local SQLite. Turning this on requires registration and email verification."}
-            </FieldDescription>
-          </FieldContent>
-          <Switch checked={enabled} disabled={changing || mode === "remote"} onCheckedChange={(checked) => void onToggle(checked)} aria-label="Enable login and sync" />
-        </Field>
-        {sync?.lastSyncedAt && <p className="text-sm text-muted-foreground">Last synced {new Date(sync.lastSyncedAt).toLocaleString()}.</p>}
-        {sync?.error && <p className="text-sm text-destructive" role="alert">{sync.error}</p>}
-        {user && <div><Button variant="outline" onClick={() => void onSignOut()}><LogInIcon /> Sign out</Button></div>}
+      <CardContent className="sync-card-content">
+        {mode === "local" && (
+          <div className="sync-storage-options" role="radiogroup" aria-label="Where to save learning notes">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={!enabled}
+              data-active={!enabled}
+              disabled={changing}
+              onClick={() => { if (enabled) void onToggle(false) }}
+            >
+              <span className="sync-option-icon"><LaptopIcon /></span>
+              <span className="sync-option-copy"><strong>Local only</strong><span>Keep notes on this computer</span></span>
+              <span className="sync-option-check" aria-hidden="true"><CheckIcon /></span>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={enabled}
+              data-active={enabled}
+              disabled={changing}
+              onClick={() => { if (!enabled) void onToggle(true) }}
+            >
+              <span className="sync-option-icon"><CloudIcon /></span>
+              <span className="sync-option-copy"><strong>Sync across devices</strong><span>Access notes here and on the web</span></span>
+              <span className="sync-option-check" aria-hidden="true"><CheckIcon /></span>
+            </button>
+          </div>
+        )}
+
+        <div className="sync-current-status" data-enabled={enabled} aria-live="polite">
+          <span className="sync-status-dot" aria-hidden="true" />
+          <div>
+            <strong>{statusTitle}</strong>
+            <p>{statusDescription}</p>
+            {sync?.lastSyncedAt && <time dateTime={sync.lastSyncedAt}>Last synced {new Date(sync.lastSyncedAt).toLocaleString()}.</time>}
+          </div>
+        </div>
+
+        {sync?.error && <p className="sync-error" role="alert">{sync.error}</p>}
+
+        {user && (
+          <div className="sync-account-row">
+            <span>Account: <strong>{user.email}</strong></span>
+            <Button variant="outline" size="sm" onClick={() => void onSignOut()}><LogInIcon /> Sign out</Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
