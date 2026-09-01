@@ -1,6 +1,6 @@
 import { useState } from "react"
 import type { LearningNote } from "@language-coach/core"
-import { ArrowLeftRightIcon, LightbulbIcon, Trash2Icon } from "lucide-react"
+import { ArrowLeftRightIcon, LaptopIcon, LightbulbIcon, Trash2Icon } from "lucide-react"
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -29,6 +29,11 @@ export function NoteFlashcard({ note, onDelete }: { note: LearningNote; onDelete
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{note.inputLanguage}</Badge>
           <span className="text-xs text-muted-foreground">{dateFormatter.format(new Date(note.createdAt))}</span>
+          {note.source && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={note.source.deviceId}>
+              <LaptopIcon className="size-3" /> {note.source.deviceName || `Device ${note.source.deviceId.slice(0, 8)}`}
+            </span>
+          )}
         </div>
         <CardAction><Badge variant="secondary">{note.nativeLanguage} → {note.targetLanguage}</Badge></CardAction>
         <CardTitle className="sr-only">Language note from {dateFormatter.format(new Date(note.createdAt))}</CardTitle>

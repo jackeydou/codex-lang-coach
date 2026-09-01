@@ -498,6 +498,8 @@
 .sync-current-status strong { display: block; font-size: 0.86rem; font-weight: 650; }
 .sync-current-status p { margin: 0.25rem 0 0; color: var(--muted-foreground); font-size: 0.79rem; line-height: 1.55; }
 .sync-current-status time { display: block; margin-top: 0.5rem; color: var(--muted-foreground); font-size: 0.72rem; }
+.sync-upload-progress { width: min(22rem, 100%); height: 0.35rem; margin-top: 0.65rem; overflow: hidden; border-radius: 999px; background: var(--muted); }
+.sync-upload-progress span { display: block; height: 100%; border-radius: inherit; background: var(--primary); transition: width 180ms ease; }
 .sync-error { margin: 0; border-radius: var(--radius-md); background: color-mix(in oklch, var(--destructive) 10%, var(--background)); color: var(--destructive); padding: 0.75rem 0.85rem; font-size: 0.78rem; line-height: 1.5; }
 
 .sync-account-row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-top: 1px solid var(--border); padding-top: 1rem; color: var(--muted-foreground); font-size: 0.78rem; }
