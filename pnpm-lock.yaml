@@ -118,6 +118,9 @@ importers:
       '@cloudflare/workers-types':
         specifier: ^5.20260830.1
         version: 5.20260830.1
+      '@language-coach/dashboard':
+        specifier: workspace:*
+        version: link:../dashboard
       '@types/pg':
         specifier: 8.23.1
         version: 8.23.1
