@@ -78,7 +78,13 @@ function PatternRanking({ patterns }: { patterns: DashboardData["progress"]["rec
   )
 }
 
-function FlashcardDeck({ notes, onDelete }: { notes: LearningNote[]; onDelete: (id: string) => Promise<void> }) {
+function FlashcardDeck({ notes, hasMore, loadingMore, onLoadMore, onDelete }: {
+  notes: LearningNote[]
+  hasMore: boolean
+  loadingMore: boolean
+  onLoadMore: () => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}) {
   const [page, setPage] = useState(0)
   const [direction, setDirection] = useState<"forward" | "backward">("forward")
 
@@ -151,6 +157,11 @@ function FlashcardDeck({ notes, onDelete }: { notes: LearningNote[]; onDelete: (
           Next <ChevronRightIcon data-icon="inline-end" />
         </Button>
       </nav>
+      {hasMore && (
+        <Button variant="outline" className="self-center" disabled={loadingMore} onClick={() => void onLoadMore()}>
+          {loadingMore ? "Loading notes…" : "Load more notes"}
+        </Button>
+      )}
     </div>
   )
 }
@@ -218,13 +229,17 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
   const enabled = mode === "remote" || Boolean(sync?.enabled)
   const statusTitle = changing
     ? "Updating storage…"
+    : sync?.state === "syncing"
+      ? "Uploading notes…"
     : enabled
-      ? "Sync is on"
+      ? "Cloud upload is on"
       : "Stored on this computer"
-  const statusDescription = enabled
+  const statusDescription = sync?.state === "syncing"
+    ? `${sync.completedItems ?? 0} of ${sync.totalItems ?? 0} local items uploaded from this device.`
+    : enabled
     ? user?.email
-      ? `Signed in as ${user.email}. New and existing notes sync with your private account.`
-      : "This device is connected to your private account. New and existing notes sync automatically."
+      ? `Signed in as ${user.email}. This device uploads notes to your private account.`
+      : "This device uploads notes to your private account. Remote notes are never downloaded here."
     : user
       ? `You are signed in as ${user.email}, but these notes have not been uploaded.`
       : "Only this computer can access these notes. Nothing is uploaded."
@@ -232,11 +247,11 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
   return (
     <Card id="account-sync">
       <CardHeader>
-        <CardTitle>{mode === "remote" ? "Account & sync" : "Where should your notes be saved?"}</CardTitle>
+        <CardTitle>{mode === "remote" ? "Account & notes" : "Where should your notes be saved?"}</CardTitle>
         <CardDescription>
           {mode === "remote"
             ? "This web dashboard shows the notes saved to your private account."
-            : "Choose whether this dashboard stays on this computer or syncs through your private account."}
+            : "Keep notes only on this computer, or upload a copy to your private account."}
         </CardDescription>
       </CardHeader>
       <CardContent className="sync-card-content">
@@ -263,7 +278,7 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
               onClick={() => { if (!enabled) void onToggle(true) }}
             >
               <span className="sync-option-icon"><CloudIcon /></span>
-              <span className="sync-option-copy"><strong>Sync across devices</strong><span>Access notes here and on the web</span></span>
+              <span className="sync-option-copy"><strong>Upload to your account</strong><span>Combine this device's notes on the web</span></span>
               <span className="sync-option-check" aria-hidden="true"><CheckIcon /></span>
             </button>
           </div>
@@ -274,6 +289,12 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
           <div>
             <strong>{statusTitle}</strong>
             <p>{statusDescription}</p>
+            {sync?.state === "syncing" && (
+              <div className="sync-upload-progress" role="progressbar" aria-label="Note upload progress" aria-valuemin={0}
+                aria-valuemax={sync.totalItems || 1} aria-valuenow={sync.completedItems || 0}>
+                <span style={{ width: `${sync.totalItems ? ((sync.completedItems || 0) / sync.totalItems) * 100 : 0}%` }} />
+              </div>
+            )}
             {sync?.lastSyncedAt && <time dateTime={sync.lastSyncedAt}>Last synced {new Date(sync.lastSyncedAt).toLocaleString()}.</time>}
           </div>
         </div>
@@ -305,7 +326,12 @@ function DashboardHeader({ settingsPage = false }: { settingsPage?: boolean }) {
   )
 }
 
-function NotesPage({ data, onDelete }: { data: DashboardData; onDelete: (id: string) => Promise<void> }) {
+function NotesPage({ data, loadingMore, onLoadMore, onDelete }: {
+  data: DashboardData
+  loadingMore: boolean
+  onLoadMore: () => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}) {
   return (
     <div className="min-h-svh">
       <DashboardHeader />
@@ -316,15 +342,16 @@ function NotesPage({ data, onDelete }: { data: DashboardData; onDelete: (id: str
             <h1>Your language notes</h1>
             <p>Recall the natural phrasing, then reveal the lesson.</p>
           </div>
-          <span className="note-count" aria-label={`${data.notes.length} learning notes`}>
-            <strong>{data.notes.length}</strong>
-            <span>{data.notes.length === 1 ? "note" : "notes"}</span>
+          <span className="note-count" aria-label={`${data.progress.totalNotes} learning notes`}>
+            <strong>{data.progress.totalNotes}</strong>
+            <span>{data.progress.totalNotes === 1 ? "note" : "notes"}</span>
           </span>
         </section>
 
         <section className="flashcard-section" aria-label="English note flashcards">
           {data.notes.length ? (
-            <FlashcardDeck notes={data.notes} onDelete={onDelete} />
+            <FlashcardDeck notes={data.notes} hasMore={Boolean(data.notesPage?.hasMore)} loadingMore={loadingMore}
+              onLoadMore={onLoadMore} onDelete={onDelete} />
           ) : (
             <Card className="empty-notes">
               <CardHeader>
@@ -422,6 +449,7 @@ export function DashboardApp() {
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
   const [syncChanging, setSyncChanging] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [authRequired, setAuthRequired] = useState(false)
   const api = useMemo(() => runtime ? createDashboardApi(runtime, accessToken || undefined) : undefined, [accessToken, runtime])
 
@@ -462,6 +490,12 @@ export function DashboardApp() {
       }
     })()
   }, [])
+
+  useEffect(() => {
+    if (!api || data?.sync?.state !== "syncing") return
+    const timer = window.setTimeout(() => { void load(api) }, 750)
+    return () => window.clearTimeout(timer)
+  }, [api, data?.sync?.state, data?.sync?.completedItems])
 
   function setSyncError(message: string) {
     setData((current) => current ? {
@@ -526,6 +560,23 @@ export function DashboardApp() {
     await load()
   }
 
+  async function loadMoreNotes() {
+    const cursor = data?.notesPage?.nextCursor
+    if (!api || !cursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const next = await api.getDashboard(cursor)
+      setData((current) => {
+        if (!current) return next
+        const notes = new Map(current.notes.map((note) => [note.id, note]))
+        for (const note of next.notes) notes.set(note.id, note)
+        return { ...current, notes: [...notes.values()], notesPage: next.notesPage, progress: next.progress }
+      })
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   if (authRequired) return <Navigate to="/sign-in?returnTo=%2Fdashboard" replace />
   if ((!data && !error) || !runtime) return <LoadingDashboard />
   if (!data) {
@@ -546,7 +597,7 @@ export function DashboardApp() {
       <a className="skip-link" href="#main-content">Skip to content</a>
       {settingsPage
         ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} />
-        : <NotesPage data={data} onDelete={deleteNote} />}
+        : <NotesPage data={data} loadingMore={loadingMore} onLoadMore={loadMoreNotes} onDelete={deleteNote} />}
     </TooltipProvider>
   )
 }
