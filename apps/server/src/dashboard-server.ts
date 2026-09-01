@@ -41,18 +41,29 @@ export async function startDashboardServer(
     try {
       const url = new URL(request.url || "/", "http://127.0.0.1");
       if (url.pathname === "/api/config" && request.method === "GET") {
-        sendJson(response, 200, { mode: "local", remoteUrl: remoteSync.remoteUrl });
+        sendJson(response, 200, {
+          mode: "local",
+          remoteUrl: remoteSync.remoteUrl,
+          deviceId: remoteSync.status.deviceId,
+          deviceName: remoteSync.status.deviceName,
+        });
         return;
       }
       if (url.pathname === "/api/dashboard" && request.method === "GET") {
-        if (remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
-        sendJson(response, 200, { ...store.getDashboardData(), sync: remoteSync.status });
+        const status = remoteSync.status;
+        const lastSyncAge = status.lastSyncedAt ? Date.now() - Date.parse(status.lastSyncedAt) : Number.POSITIVE_INFINITY;
+        if (status.enabled && status.state !== "syncing" && lastSyncAge > 30_000) {
+          void remoteSync.sync().catch(() => undefined);
+        }
+        const requestedLimit = Number(url.searchParams.get("limit") || 50);
+        const limit = Math.max(1, Math.min(100, Number.isFinite(requestedLimit) ? Math.trunc(requestedLimit) : 50));
+        sendJson(response, 200, { ...store.getDashboardData(limit, url.searchParams.get("cursor") || undefined), sync: remoteSync.status });
         return;
       }
       if (url.pathname === "/api/sync/configure" && request.method === "POST") {
         const input = await readJson(request);
         remoteSync.configure(input as unknown as RemoteSyncConfig);
-        await remoteSync.sync();
+        void remoteSync.sync().catch(() => undefined);
         sendJson(response, 200, remoteSync.status);
         return;
       }
@@ -68,14 +79,14 @@ export async function startDashboardServer(
           targetLanguage: typeof input.targetLanguage === "string" ? input.targetLanguage : undefined,
           coachEnabled: typeof input.coachEnabled === "boolean" ? input.coachEnabled : undefined,
         });
-        if (remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
+        if (remoteSync.status.enabled) void remoteSync.sync().catch(() => undefined);
         sendJson(response, 200, profile);
         return;
       }
       if (url.pathname.startsWith("/api/notes/") && request.method === "DELETE") {
         const id = decodeURIComponent(url.pathname.slice("/api/notes/".length));
         const deleted = store.deleteNote(id);
-        if (deleted && remoteSync.status.enabled) await remoteSync.sync().catch(() => undefined);
+        if (deleted && remoteSync.status.enabled) void remoteSync.sync().catch(() => undefined);
         sendJson(response, deleted ? 200 : 404, { deleted });
         return;
       }

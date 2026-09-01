@@ -47,6 +47,8 @@ export async function loadDashboardRuntime(): Promise<DashboardRuntimeConfig> {
 }
 
 export class DashboardApi {
+  private localDeviceId?: string
+
   constructor(
     readonly runtime: DashboardRuntimeConfig,
     private readonly accessToken?: string,
@@ -56,8 +58,10 @@ export class DashboardApi {
     return this.runtime.mode === "remote" ? this.accessToken : undefined
   }
 
-  getDashboard(): Promise<DashboardData> {
-    return requestJson<DashboardData>("/api/dashboard", {}, this.runtimeToken())
+  getDashboard(cursor?: string): Promise<DashboardData> {
+    const params = new URLSearchParams({ limit: "50" })
+    if (cursor) params.set("cursor", cursor)
+    return requestJson<DashboardData>(`/api/dashboard?${params}`, {}, this.runtimeToken())
   }
 
   updateProfile(profile: ProfileUpdate): Promise<LanguageProfile> {
@@ -75,20 +79,34 @@ export class DashboardApi {
   async enableLocalSync(sessionToken: string): Promise<void> {
     this.assertLocalMode()
     const remoteUrl = this.runtime.remoteUrl.replace(/\/$/, "")
-    const created = await requestJson<{ token: string; userId: string }>(
+    const deviceId = crypto.randomUUID()
+    const platform = typeof navigator === "undefined" ? "local device" : navigator.platform || "local device"
+    const deviceName = `Language Coach on ${platform}`
+    const created = await requestJson<{ token: string; userId: string; deviceId: string; deviceName: string }>(
       `${remoteUrl}/api/sync-tokens`,
-      { method: "POST", body: JSON.stringify({ label: "Language Coach local dashboard" }) },
+      { method: "POST", body: JSON.stringify({ deviceId, deviceName }) },
       sessionToken,
     )
-    const config: RemoteSyncConfig = { remoteUrl, token: created.token, userId: created.userId }
+    if (created.deviceId !== deviceId) throw new Error("The remote service returned a different device identity.")
+    this.localDeviceId = created.deviceId
+    const config: RemoteSyncConfig = {
+      remoteUrl,
+      token: created.token,
+      userId: created.userId,
+      deviceId: created.deviceId,
+      deviceName: created.deviceName,
+    }
     await requestJson("/api/sync/configure", { method: "POST", body: JSON.stringify(config) })
   }
 
   async disableLocalSync(sessionToken: string): Promise<void> {
     this.assertLocalMode()
     const remoteUrl = this.runtime.remoteUrl.replace(/\/$/, "")
-    await requestJson(`${remoteUrl}/api/sync-tokens`, { method: "DELETE" }, sessionToken)
+    const deviceId = this.localDeviceId || this.runtime.deviceId
+    if (!deviceId) throw new Error("This device does not have a sync identity.")
+    await requestJson(`${remoteUrl}/api/sync-tokens/${encodeURIComponent(deviceId)}`, { method: "DELETE" }, sessionToken)
     await requestJson("/api/sync/configure", { method: "DELETE" })
+    this.localDeviceId = undefined
   }
 
   private assertLocalMode(): void {

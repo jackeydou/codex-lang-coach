@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { Buffer } from "node:buffer";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -22,17 +23,30 @@ export interface LearningStore {
   updateProfile(input: Partial<Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">>): LanguageProfile;
   saveNote(input: LearningNoteInput): LearningNote;
   hasNoteForTurn(turnId: string): boolean;
-  listNotes(limit?: number): LearningNote[];
+  listNotes(limit?: number, offset?: number): LearningNote[];
   deleteNote(id: string): boolean;
   getProgress(): ProgressSummary;
-  getDashboardData(limit?: number): DashboardData;
+  getDashboardData(limit?: number, cursor?: string): DashboardData;
   getSyncSnapshot(): SyncSnapshot;
-  mergeSyncSnapshot(snapshot: SyncSnapshot): void;
   close(): void;
 }
 
 export function resolveDatabasePath(env: NodeJS.ProcessEnv = process.env): string {
   return env.LANGUAGE_COACH_DB_PATH || join(homedir(), ".language-coach", "language-coach.sqlite");
+}
+
+function decodeNotesCursor(value?: string): { createdAt: string; id: string } | undefined {
+  if (!value) return undefined;
+  try {
+    const cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { createdAt?: string; id?: string };
+    return cursor.createdAt && cursor.id ? { createdAt: cursor.createdAt, id: cursor.id } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function encodeNotesCursor(note: LearningNote): string {
+  return Buffer.from(JSON.stringify({ createdAt: note.createdAt, id: note.id })).toString("base64url");
 }
 
 function now(): string {
@@ -207,11 +221,19 @@ export class SqliteLearningStore implements LearningStore {
     return Boolean(this.database.prepare("SELECT 1 FROM learning_notes WHERE turn_id = ?").get(turnId));
   }
 
-  listNotes(limit = 100): LearningNote[] {
+  listNotes(limit = 100, offset = 0): LearningNote[] {
     const safeLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
+    const safeOffset = Math.max(0, Math.trunc(offset));
     const rows = this.database
-      .prepare("SELECT * FROM learning_notes ORDER BY created_at DESC LIMIT ?")
-      .all(safeLimit) as unknown as NoteRow[];
+      .prepare("SELECT * FROM learning_notes ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?")
+      .all(safeLimit, safeOffset) as unknown as NoteRow[];
+    return rows.map(mapNote);
+  }
+
+  private listAllNotes(): LearningNote[] {
+    const rows = this.database
+      .prepare("SELECT * FROM learning_notes ORDER BY created_at DESC, id DESC")
+      .all() as unknown as NoteRow[];
     return rows.map(mapNote);
   }
 
@@ -225,11 +247,30 @@ export class SqliteLearningStore implements LearningStore {
   }
 
   getProgress(): ProgressSummary {
-    return calculateProgress(this.listNotes(500));
+    return calculateProgress(this.listAllNotes());
   }
 
-  getDashboardData(limit = 100): DashboardData {
-    return { profile: this.getProfile(), notes: this.listNotes(limit), progress: this.getProgress() };
+  getDashboardData(limit = 50, cursorValue?: string): DashboardData {
+    const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+    const cursor = decodeNotesCursor(cursorValue);
+    const rows = this.database.prepare(`SELECT * FROM learning_notes
+      WHERE (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?))
+      ORDER BY created_at DESC, id DESC LIMIT ?`)
+      .all(cursor?.createdAt ?? null, cursor?.createdAt ?? null, cursor?.createdAt ?? null,
+        cursor?.id ?? null, safeLimit + 1) as unknown as NoteRow[];
+    const hasMore = rows.length > safeLimit;
+    const notes = rows.slice(0, safeLimit).map(mapNote);
+    const progress = this.getProgress();
+    return {
+      profile: this.getProfile(),
+      notes,
+      progress,
+      notesPage: {
+        limit: safeLimit,
+        hasMore,
+        nextCursor: hasMore && notes.length ? encodeNotesCursor(notes[notes.length - 1]!) : undefined,
+      },
+    };
   }
 
   getSyncSnapshot(): SyncSnapshot {
@@ -238,38 +279,9 @@ export class SqliteLearningStore implements LearningStore {
       .all() as Array<{ id: string; deleted_at: string }>;
     return {
       profile: this.getProfile(),
-      notes: this.listNotes(500),
+      notes: this.listAllNotes(),
       deletedNotes: deletedNotes.map((item) => ({ id: item.id, deletedAt: item.deleted_at })),
     };
-  }
-
-  mergeSyncSnapshot(snapshot: SyncSnapshot): void {
-    const currentProfile = this.getProfile();
-    if (snapshot.profile.updatedAt > currentProfile.updatedAt) {
-      this.database.prepare(`UPDATE profile SET native_language = ?, target_language = ?, coach_enabled = ?, updated_at = ? WHERE id = 1`)
-        .run(snapshot.profile.nativeLanguage, snapshot.profile.targetLanguage, snapshot.profile.coachEnabled ? 1 : 0, snapshot.profile.updatedAt);
-    }
-
-    for (const deleted of snapshot.deletedNotes) {
-      const existing = this.database.prepare("SELECT deleted_at FROM deleted_learning_notes WHERE id = ?").get(deleted.id) as { deleted_at: string } | undefined;
-      if (!existing || deleted.deletedAt > existing.deleted_at) {
-        this.database.prepare(`INSERT INTO deleted_learning_notes (id, deleted_at) VALUES (?, ?)
-          ON CONFLICT(id) DO UPDATE SET deleted_at = excluded.deleted_at`).run(deleted.id, deleted.deletedAt);
-      }
-      this.database.prepare("DELETE FROM learning_notes WHERE id = ?").run(deleted.id);
-    }
-
-    for (const note of snapshot.notes) {
-      const tombstone = this.database.prepare("SELECT 1 FROM deleted_learning_notes WHERE id = ?").get(note.id);
-      if (tombstone) continue;
-      this.database.prepare(`INSERT OR IGNORE INTO learning_notes (
-        id, turn_id, input_language, original_expression, polished_expression, corrections_json,
-        patterns_json, examples_json, native_language, target_language, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(note.id, note.turnId ?? null, note.inputLanguage, note.originalExpression, note.polishedExpression,
-          JSON.stringify(note.corrections), JSON.stringify(note.patterns), JSON.stringify(note.examples),
-          note.nativeLanguage, note.targetLanguage, note.createdAt);
-    }
   }
 
   close(): void {

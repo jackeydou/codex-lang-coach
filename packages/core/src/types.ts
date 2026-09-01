@@ -64,6 +64,12 @@ export interface LearningNote extends LearningNoteInput {
   nativeLanguage: string;
   targetLanguage: string;
   createdAt: string;
+  source?: NoteSource;
+}
+
+export interface NoteSource {
+  deviceId: string;
+  deviceName?: string;
 }
 
 export interface ProgressSummary {
@@ -88,6 +94,13 @@ export interface DashboardData {
   notes: LearningNote[];
   progress: ProgressSummary;
   sync?: SyncStatus;
+  notesPage?: NotesPage;
+}
+
+export interface NotesPage {
+  hasMore: boolean;
+  nextCursor?: string;
+  limit: number;
 }
 
 export interface DeletedLearningNote {
@@ -101,22 +114,46 @@ export interface SyncSnapshot {
   deletedNotes: DeletedLearningNote[];
 }
 
+export interface SyncUploadBatch {
+  deviceId: string;
+  deviceName?: string;
+  profile?: LanguageProfile;
+  notes: LearningNote[];
+  deletedNotes: DeletedLearningNote[];
+}
+
+export interface SyncUploadResult {
+  deviceId: string;
+  acceptedNotes: number;
+  acceptedDeletions: number;
+  syncedAt: string;
+}
+
 export interface SyncStatus {
   enabled: boolean;
   userId?: string;
+  deviceId?: string;
+  deviceName?: string;
   remoteUrl?: string;
   lastSyncedAt?: string;
   error?: string;
+  state?: "idle" | "syncing" | "error";
+  completedItems?: number;
+  totalItems?: number;
 }
 
 export interface RemoteSyncConfig {
   remoteUrl: string;
   token: string;
   userId: string;
+  deviceId: string;
+  deviceName?: string;
 }
 
 export interface DashboardRuntimeConfig {
   mode: "local" | "remote";
   remoteUrl: string;
   authUrl?: string;
+  deviceId?: string;
+  deviceName?: string;
 }
