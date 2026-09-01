@@ -18,6 +18,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260830.1",
+    "@language-coach/dashboard": "workspace:*",
     "@types/pg": "8.23.1",
     "wrangler": "^4.127.1"
   }
