@@ -32,7 +32,9 @@ describe("RemoteLearningSync", () => {
 
     const deviceId = "123e4567-e89b-42d3-a456-426614174000";
     const batches: SyncUploadBatch[] = [];
+    const requests: RequestInit[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      requests.push(init || {});
       const batch = JSON.parse(String(init?.body)) as SyncUploadBatch;
       batches.push(batch);
       return Response.json({
@@ -55,10 +57,13 @@ describe("RemoteLearningSync", () => {
     });
 
     await expect(sync.sync()).resolves.toMatchObject({ acceptedNotes: 205, deviceId });
-    expect(batches.map((batch) => batch.notes.length)).toEqual([100, 100, 5]);
+    expect(batches.map((batch) => batch.notes.length)).toEqual([20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 5]);
     expect(batches.every((batch) => batch.deviceId === deviceId)).toBe(true);
     expect(batches[0]?.profile).toEqual(store.getProfile());
     expect(batches.slice(1).every((batch) => batch.profile === undefined)).toBe(true);
+    expect(requests[0]?.headers).toEqual(expect.objectContaining({
+      "user-agent": "Language-Coach/0.1 (+https://language-coach.pluginsfoundry.dev)",
+    }));
     expect(sync.status).toMatchObject({ state: "idle", completedItems: 205, totalItems: 205 });
     store.close();
   });
@@ -112,7 +117,50 @@ describe("RemoteLearningSync", () => {
 
     expect(batches).toHaveLength(2);
     expect(batches[0]?.notes).toHaveLength(1);
-    expect(batches[1]?.notes).toHaveLength(2);
+    expect(batches[1]?.notes).toHaveLength(1);
+    store.close();
+  });
+
+  it("persists a checkpoint and skips unchanged notes after restart", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "language-coach-sync-checkpoint-test-"));
+    temporaryDirectories.push(directory);
+    const store = new SqliteLearningStore(join(directory, "notes.sqlite"));
+    store.saveNote({
+      turnId: "checkpoint-turn",
+      inputLanguage: "target",
+      originalExpression: "Original",
+      polishedExpression: "Polished",
+      corrections: [],
+      patterns: [],
+      examples: [],
+    });
+    const deviceId = "123e4567-e89b-42d3-a456-426614174000";
+    const configPath = join(directory, "remote-sync.json");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (_input, init) => {
+      const batch = JSON.parse(String(init?.body)) as SyncUploadBatch;
+      return Response.json({
+        deviceId,
+        acceptedNotes: batch.notes.length,
+        acceptedDeletions: batch.deletedNotes.length,
+        syncedAt: "2026-09-01T00:00:00.000Z",
+      });
+    });
+    const config = {
+      remoteUrl: "https://language-coach.example",
+      token: "lc_abcdefghijklmnopqrstuvwxyz0123456789",
+      userId: "user-1",
+      deviceId,
+    };
+
+    const firstSync = new RemoteLearningSync(store, { LANGUAGE_COACH_SYNC_CONFIG_PATH: configPath });
+    firstSync.configure(config);
+    await firstSync.sync();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const restartedSync = new RemoteLearningSync(store, { LANGUAGE_COACH_SYNC_CONFIG_PATH: configPath });
+    await expect(restartedSync.sync()).resolves.toMatchObject({ acceptedNotes: 0, acceptedDeletions: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(restartedSync.status.lastSyncedAt).toBeDefined();
     store.close();
   });
 });

@@ -109,9 +109,15 @@ export interface DeletedLearningNote {
 }
 
 export interface SyncSnapshot {
-  profile: LanguageProfile;
+  profile?: LanguageProfile;
   notes: LearningNote[];
   deletedNotes: DeletedLearningNote[];
+  throughRevision: number;
+}
+
+export interface SyncCheckpoint {
+  revision: number;
+  lastSyncedAt?: string;
 }
 
 export interface SyncUploadBatch {

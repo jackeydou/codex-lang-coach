@@ -493,9 +493,20 @@ export function DashboardApp() {
 
   useEffect(() => {
     if (!api || data?.sync?.state !== "syncing") return
-    const timer = window.setTimeout(() => { void load(api) }, 750)
-    return () => window.clearTimeout(timer)
-  }, [api, data?.sync?.state, data?.sync?.completedItems])
+    let cancelled = false
+    let timer: number | undefined
+
+    async function pollSync() {
+      await load(api)
+      if (!cancelled) timer = window.setTimeout(() => { void pollSync() }, 750)
+    }
+
+    timer = window.setTimeout(() => { void pollSync() }, 750)
+    return () => {
+      cancelled = true
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [api, data?.sync?.state])
 
   function setSyncError(message: string) {
     setData((current) => current ? {

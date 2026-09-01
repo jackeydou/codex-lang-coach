@@ -12,6 +12,7 @@ import type {
   LearningNoteInput,
   LearningPattern,
   ProgressSummary,
+  SyncCheckpoint,
   SyncSnapshot,
   TransferExample,
   InputLanguageKind,
@@ -27,7 +28,9 @@ export interface LearningStore {
   deleteNote(id: string): boolean;
   getProgress(): ProgressSummary;
   getDashboardData(limit?: number, cursor?: string): DashboardData;
-  getSyncSnapshot(): SyncSnapshot;
+  getSyncCheckpoint(remoteUrl: string, userId: string): SyncCheckpoint;
+  getSyncSnapshot(remoteUrl: string, userId: string): SyncSnapshot;
+  markSyncCheckpoint(remoteUrl: string, userId: string, revision: number, syncedAt: string): void;
   close(): void;
 }
 
@@ -76,6 +79,10 @@ type NoteRow = {
   created_at: string;
 };
 
+function normalizeRemoteUrl(remoteUrl: string): string {
+  return remoteUrl.replace(/\/$/, "");
+}
+
 function mapNote(row: NoteRow): LearningNote {
   return {
     id: row.id,
@@ -109,7 +116,8 @@ export class SqliteLearningStore implements LearningStore {
         native_language TEXT NOT NULL,
         target_language TEXT NOT NULL,
         coach_enabled INTEGER NOT NULL DEFAULT 1,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        sync_revision INTEGER NOT NULL DEFAULT 0
       );
       CREATE TABLE IF NOT EXISTS learning_notes (
         id TEXT PRIMARY KEY,
@@ -122,25 +130,79 @@ export class SqliteLearningStore implements LearningStore {
         examples_json TEXT NOT NULL,
         native_language TEXT NOT NULL,
         target_language TEXT NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        sync_revision INTEGER NOT NULL DEFAULT 0
       );
       CREATE INDEX IF NOT EXISTS idx_learning_notes_created_at
         ON learning_notes(created_at DESC);
       CREATE TABLE IF NOT EXISTS deleted_learning_notes (
         id TEXT PRIMARY KEY,
-        deleted_at TEXT NOT NULL
+        deleted_at TEXT NOT NULL,
+        sync_revision INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE TABLE IF NOT EXISTS local_sync_clock (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        current_revision INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS sync_checkpoints (
+        remote_url TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        last_synced_revision INTEGER NOT NULL DEFAULT 0,
+        last_synced_at TEXT,
+        PRIMARY KEY (remote_url, user_id)
       );
     `);
+    const profileColumns = this.database.prepare("PRAGMA table_info(profile)").all() as Array<{ name: string }>;
+    if (!profileColumns.some((column) => column.name === "sync_revision")) {
+      this.database.exec("ALTER TABLE profile ADD COLUMN sync_revision INTEGER NOT NULL DEFAULT 0");
+    }
     const noteColumns = this.database.prepare("PRAGMA table_info(learning_notes)").all() as Array<{ name: string }>;
     if (!noteColumns.some((column) => column.name === "input_language")) {
       this.database.exec("ALTER TABLE learning_notes ADD COLUMN input_language TEXT NOT NULL DEFAULT 'other'");
     }
+    if (!noteColumns.some((column) => column.name === "sync_revision")) {
+      this.database.exec("ALTER TABLE learning_notes ADD COLUMN sync_revision INTEGER NOT NULL DEFAULT 0");
+    }
+    const deletedNoteColumns = this.database.prepare("PRAGMA table_info(deleted_learning_notes)").all() as Array<{ name: string }>;
+    if (!deletedNoteColumns.some((column) => column.name === "sync_revision")) {
+      this.database.exec("ALTER TABLE deleted_learning_notes ADD COLUMN sync_revision INTEGER NOT NULL DEFAULT 0");
+    }
     const timestamp = now();
     this.database
       .prepare(`INSERT OR IGNORE INTO profile
-        (id, native_language, target_language, coach_enabled, updated_at)
-        VALUES (1, 'Chinese', 'English', 1, ?)`)
+        (id, native_language, target_language, coach_enabled, updated_at, sync_revision)
+        VALUES (1, 'Chinese', 'English', 1, ?, 0)`)
       .run(timestamp);
+    this.database.prepare("INSERT OR IGNORE INTO local_sync_clock (id, current_revision) VALUES (1, 0)").run();
+    const hasUnversionedData = Boolean(this.database.prepare(`SELECT 1 FROM profile WHERE sync_revision = 0
+      UNION ALL SELECT 1 FROM learning_notes WHERE sync_revision = 0
+      UNION ALL SELECT 1 FROM deleted_learning_notes WHERE sync_revision = 0 LIMIT 1`).get());
+    if (hasUnversionedData) {
+      this.database.exec(`
+        UPDATE local_sync_clock SET current_revision = MAX(current_revision, 1) WHERE id = 1;
+        UPDATE profile SET sync_revision = 1 WHERE sync_revision = 0;
+        UPDATE learning_notes SET sync_revision = 1 WHERE sync_revision = 0;
+        UPDATE deleted_learning_notes SET sync_revision = 1 WHERE sync_revision = 0;
+      `);
+    }
+  }
+
+  private nextSyncRevision(): number {
+    const row = this.database.prepare(`UPDATE local_sync_clock SET current_revision = current_revision + 1
+      WHERE id = 1 RETURNING current_revision`).get() as { current_revision: number };
+    return row.current_revision;
+  }
+
+  private transaction<T>(operation: () => T): T {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const result = operation();
+      this.database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   getProfile(): LanguageProfile {
@@ -166,9 +228,12 @@ export class SqliteLearningStore implements LearningStore {
       coachEnabled: input.coachEnabled ?? current.coachEnabled,
       updatedAt: now(),
     };
-    this.database
-      .prepare(`UPDATE profile SET native_language = ?, target_language = ?, coach_enabled = ?, updated_at = ? WHERE id = 1`)
-      .run(next.nativeLanguage, next.targetLanguage, next.coachEnabled ? 1 : 0, next.updatedAt);
+    this.transaction(() => {
+      const revision = this.nextSyncRevision();
+      this.database
+        .prepare(`UPDATE profile SET native_language = ?, target_language = ?, coach_enabled = ?, updated_at = ?, sync_revision = ? WHERE id = 1`)
+        .run(next.nativeLanguage, next.targetLanguage, next.coachEnabled ? 1 : 0, next.updatedAt, revision);
+    });
     return next;
   }
 
@@ -196,12 +261,12 @@ export class SqliteLearningStore implements LearningStore {
       return mapNote(row);
     }
 
-    this.database
-      .prepare(`INSERT INTO learning_notes (
+    this.transaction(() => {
+      const revision = this.nextSyncRevision();
+      this.database.prepare(`INSERT INTO learning_notes (
         id, turn_id, input_language, original_expression, polished_expression, corrections_json,
-        patterns_json, examples_json, native_language, target_language, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(
+        patterns_json, examples_json, native_language, target_language, created_at, sync_revision
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
         note.id,
         note.turnId ?? null,
         note.inputLanguage,
@@ -213,7 +278,9 @@ export class SqliteLearningStore implements LearningStore {
         note.nativeLanguage,
         note.targetLanguage,
         note.createdAt,
+        revision,
       );
+    });
     return note;
   }
 
@@ -238,12 +305,16 @@ export class SqliteLearningStore implements LearningStore {
   }
 
   deleteNote(id: string): boolean {
-    const result = this.database.prepare("DELETE FROM learning_notes WHERE id = ?").run(id);
-    if (result.changes > 0) {
-      this.database.prepare(`INSERT INTO deleted_learning_notes (id, deleted_at) VALUES (?, ?)
-        ON CONFLICT(id) DO UPDATE SET deleted_at = excluded.deleted_at`).run(id, now());
-    }
-    return result.changes > 0;
+    return this.transaction(() => {
+      const result = this.database.prepare("DELETE FROM learning_notes WHERE id = ?").run(id);
+      if (result.changes > 0) {
+        const revision = this.nextSyncRevision();
+        this.database.prepare(`INSERT INTO deleted_learning_notes (id, deleted_at, sync_revision) VALUES (?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET deleted_at = excluded.deleted_at, sync_revision = excluded.sync_revision`)
+          .run(id, now(), revision);
+      }
+      return result.changes > 0;
+    });
   }
 
   getProgress(): ProgressSummary {
@@ -273,15 +344,43 @@ export class SqliteLearningStore implements LearningStore {
     };
   }
 
-  getSyncSnapshot(): SyncSnapshot {
+  getSyncCheckpoint(remoteUrl: string, userId: string): SyncCheckpoint {
+    const row = this.database.prepare(`SELECT last_synced_revision, last_synced_at FROM sync_checkpoints
+      WHERE remote_url = ? AND user_id = ?`).get(normalizeRemoteUrl(remoteUrl), userId) as {
+        last_synced_revision: number;
+        last_synced_at: string | null;
+      } | undefined;
+    return { revision: row?.last_synced_revision ?? 0, lastSyncedAt: row?.last_synced_at ?? undefined };
+  }
+
+  getSyncSnapshot(remoteUrl: string, userId: string): SyncSnapshot {
+    const checkpoint = this.getSyncCheckpoint(remoteUrl, userId);
+    const throughRevision = (this.database.prepare("SELECT current_revision FROM local_sync_clock WHERE id = 1").get() as {
+      current_revision: number;
+    }).current_revision;
+    const profileRow = this.database.prepare("SELECT sync_revision FROM profile WHERE id = 1").get() as { sync_revision: number };
     const deletedNotes = this.database
-      .prepare("SELECT id, deleted_at FROM deleted_learning_notes ORDER BY deleted_at")
-      .all() as Array<{ id: string; deleted_at: string }>;
+      .prepare("SELECT id, deleted_at FROM deleted_learning_notes WHERE sync_revision > ? AND sync_revision <= ? ORDER BY sync_revision")
+      .all(checkpoint.revision, throughRevision) as Array<{ id: string; deleted_at: string }>;
+    const noteRows = this.database.prepare(`SELECT * FROM learning_notes WHERE sync_revision > ? AND sync_revision <= ?
+      ORDER BY sync_revision`).all(checkpoint.revision, throughRevision) as unknown as NoteRow[];
     return {
-      profile: this.getProfile(),
-      notes: this.listAllNotes(),
+      profile: profileRow.sync_revision > checkpoint.revision && profileRow.sync_revision <= throughRevision
+        ? this.getProfile()
+        : undefined,
+      notes: noteRows.map(mapNote),
       deletedNotes: deletedNotes.map((item) => ({ id: item.id, deletedAt: item.deleted_at })),
+      throughRevision,
     };
+  }
+
+  markSyncCheckpoint(remoteUrl: string, userId: string, revision: number, syncedAt: string): void {
+    this.database.prepare(`INSERT INTO sync_checkpoints
+      (remote_url, user_id, last_synced_revision, last_synced_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(remote_url, user_id) DO UPDATE SET
+        last_synced_revision = MAX(sync_checkpoints.last_synced_revision, excluded.last_synced_revision),
+        last_synced_at = excluded.last_synced_at`)
+      .run(normalizeRemoteUrl(remoteUrl), userId, revision, syncedAt);
   }
 
   close(): void {
