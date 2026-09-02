@@ -32,12 +32,24 @@ afterEach(() => {
 })
 
 describe("loadDashboardRuntime", () => {
-  it("keeps local mode while loading auth configuration from the remote site", async () => {
+  it("does not request remote configuration for a local-only dashboard", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(json({ mode: "local", remoteUrl: "https://remote.example" }))
+
+    await expect(loadDashboardRuntime()).resolves.toEqual({
+      mode: "local",
+      remoteUrl: "https://remote.example",
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith("/api/config", expect.any(Object))
+  })
+
+  it("loads remote auth configuration only when explicitly requested", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(json({ mode: "local", remoteUrl: "https://remote.example" }))
       .mockResolvedValueOnce(json({ mode: "remote", remoteUrl: "https://remote.example", authUrl: "https://auth.example" }))
 
-    await expect(loadDashboardRuntime()).resolves.toEqual({
+    await expect(loadDashboardRuntime({ includeRemoteAuth: true })).resolves.toEqual({
       mode: "local",
       remoteUrl: "https://remote.example",
       authUrl: "https://auth.example",
@@ -51,7 +63,7 @@ describe("loadDashboardRuntime", () => {
       .mockResolvedValueOnce(json({ mode: "local", remoteUrl: "https://remote.example" }))
       .mockRejectedValueOnce(new TypeError("Network error"))
 
-    await expect(loadDashboardRuntime()).resolves.toEqual({
+    await expect(loadDashboardRuntime({ includeRemoteAuth: true })).resolves.toEqual({
       mode: "local",
       remoteUrl: "https://remote.example",
     })
