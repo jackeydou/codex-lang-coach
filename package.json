@@ -11,7 +11,7 @@
     "check": "pnpm -r check",
     "dashboard": "node dist/language-coach/mcp/server.mjs --dashboard",
     "deploy:cloudflare": "pnpm --filter @language-coach/worker run deploy",
-    "dev": "pnpm --parallel --filter @language-coach/server --filter @language-coach/dashboard dev",
+    "dev": "pnpm --filter @language-coach/dashboard dev",
     "test": "pnpm -r test"
   },
   "engines": {

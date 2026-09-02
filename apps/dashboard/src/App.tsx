@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from "react"
 import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, LearningNote, SyncStatus } from "@language-coach/core"
-import { ActivityIcon, ArrowLeftIcon, BookOpenCheckIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloudIcon, FlameIcon, LanguagesIcon, LaptopIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom"
+import { ActivityIcon, ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, BookOpenCheckIcon, CheckIcon, CloudIcon, FlameIcon, HomeIcon, LaptopIcon, LightbulbIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 
 import { AuthPage } from "@/AuthPage"
 import { initializeAuth, readAuthSession, type AuthClient, type AuthUser } from "@/auth-client"
@@ -9,12 +9,13 @@ import { ActivityChart, CategoryChart, LanguageUseChart } from "@/components/ana
 import { LandingPage } from "@/LandingPage"
 import { LegalPage } from "@/LegalPage"
 import { NoteFlashcard } from "@/components/note-flashcard"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -22,22 +23,12 @@ import { createDashboardApi, type DashboardApi, UnauthorizedError } from "@/dash
 
 function LoadingDashboard() {
   return (
-    <div className="min-h-svh" aria-busy="true" aria-label="Loading dashboard">
-      <header className="dashboard-header"><Skeleton className="h-9 w-44" /><Skeleton className="h-9 w-24" /></header>
-      <main className="dashboard-content dashboard-content--focused">
-        <Skeleton className="h-16 w-72 max-w-full" />
-        <Skeleton className="h-96 w-full" />
+    <div className="dashboard-loading" aria-busy="true" aria-label="Loading dashboard">
+      <aside><Skeleton className="h-9 w-40" /><Skeleton className="mt-10 h-8 w-full" /><Skeleton className="mt-2 h-8 w-full" /></aside>
+      <main>
+        <Skeleton className="h-full w-full rounded-2xl" />
       </main>
     </div>
-  )
-}
-
-function Brand() {
-  return (
-    <a className="brand" href="/" aria-label="Language Coach home">
-      <span className="brand-mark"><LanguagesIcon /></span>
-      <span className="brand-name">Language Coach</span>
-    </a>
   )
 }
 
@@ -54,27 +45,92 @@ function MetricCard({ label, value, detail, icon: Icon }: { label: string; value
   )
 }
 
-function PatternRanking({ patterns }: { patterns: DashboardData["progress"]["recurringPatterns"] }) {
-  const max = Math.max(1, ...patterns.map((item) => item.count))
-  if (!patterns.length) return <p className="text-sm text-muted-foreground">Reusable patterns will appear after your first saved lesson.</p>
+function ActivityHeatmap({ activity }: { activity: DashboardData["progress"]["activity90Days"] }) {
+  const maximum = Math.max(1, ...activity.map((day) => day.count))
+  const leadingDays = activity[0]
+    ? new Date(`${activity[0].date}T00:00:00Z`).getUTCDay()
+    : 0
 
   return (
-    <ol className="flex flex-col gap-4">
-      {patterns.slice(0, 5).map((item, index) => (
-        <li key={item.pattern} className="grid gap-2">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-medium"><span className="mr-2 text-muted-foreground">{index + 1}.</span>{item.pattern}</p>
-              <p className="line-clamp-2 text-xs text-muted-foreground">{item.explanation}</p>
-            </div>
-            <Badge variant="secondary">{item.count}×</Badge>
-          </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="meter" aria-label={`${item.pattern}, seen ${item.count} times`} aria-valuemin={0} aria-valuemax={max} aria-valuenow={item.count}>
-            <span className="block h-full rounded-full bg-primary" style={{ width: `${(item.count / max) * 100}%` }} />
-          </div>
-        </li>
-      ))}
-    </ol>
+    <section className="insight-section" aria-labelledby="activity-heatmap-title">
+      <div className="insight-heading">
+        <div>
+          <p>Last 90 days</p>
+          <h2 id="activity-heatmap-title">Practice activity</h2>
+        </div>
+        <strong>{activity.reduce((total, day) => total + day.count, 0)}</strong>
+      </div>
+      <div className="activity-heatmap" role="img" aria-label="Learning notes submitted during the last 90 days">
+        {Array.from({ length: leadingDays }, (_, index) => <span key={`empty-${index}`} className="heatmap-cell heatmap-cell--empty" />)}
+        {activity.map((day) => {
+          const level = day.count === 0 ? 0 : Math.max(1, Math.ceil((day.count / maximum) * 4))
+          return <span key={day.date} className="heatmap-cell" data-level={level} title={`${day.date}: ${day.count} ${day.count === 1 ? "note" : "notes"}`} />
+        })}
+      </div>
+      <div className="heatmap-legend" aria-hidden="true"><span>Less</span>{[0, 1, 2, 3, 4].map((level) => <i key={level} data-level={level} />)}<span>More</span></div>
+    </section>
+  )
+}
+
+function RepeatPatterns({ patterns }: { patterns: DashboardData["progress"]["recurringPatterns"] }) {
+  const pageSize = 4
+  const [page, setPage] = useState(0)
+  const pageCount = Math.max(1, Math.ceil(patterns.length / pageSize))
+
+  useEffect(() => setPage((current) => Math.min(current, pageCount - 1)), [pageCount])
+
+  const visiblePatterns = patterns.slice(page * pageSize, (page + 1) * pageSize)
+  return (
+    <section className="insight-section repeat-patterns" aria-labelledby="repeat-patterns-title">
+      <div className="insight-heading">
+        <div><p>Worth revisiting</p><h2 id="repeat-patterns-title">Repeat patterns</h2></div>
+        <span>{patterns.length}</span>
+      </div>
+      {visiblePatterns.length ? (
+        <ol>
+          {visiblePatterns.map((pattern, index) => (
+            <li key={pattern.pattern}>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <button type="button" className="pattern-row" aria-label={`Open pattern: ${pattern.pattern}`}>
+                    <span>{String(page * pageSize + index + 1).padStart(2, "0")}</span>
+                    <div><strong>{pattern.pattern}</strong><p>{pattern.explanation}</p></div>
+                    <b>{pattern.count}×</b>
+                  </button>
+                </DialogTrigger>
+                <DialogContent className="pattern-dialog">
+                  <DialogHeader>
+                    <p className="pattern-dialog-eyebrow">Repeated {pattern.count} times</p>
+                    <DialogTitle>{pattern.pattern}</DialogTitle>
+                  </DialogHeader>
+                  <DialogDescription>{pattern.explanation}</DialogDescription>
+                </DialogContent>
+              </Dialog>
+            </li>
+          ))}
+        </ol>
+      ) : <p className="patterns-empty">Patterns will appear as you save more lessons.</p>}
+      {pageCount > 1 && (
+        <nav className="patterns-pagination" aria-label="Repeat patterns pages">
+          <Button variant="ghost" size="icon-sm" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={page === 0} aria-label="Previous pattern page"><ArrowLeftIcon /></Button>
+          <span>{page + 1} / {pageCount}</span>
+          <Button variant="ghost" size="icon-sm" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={page === pageCount - 1} aria-label="Next pattern page"><ArrowRightIcon /></Button>
+        </nav>
+      )}
+    </section>
+  )
+}
+
+function LearningInsights({ progress }: { progress: DashboardData["progress"] }) {
+  return (
+    <aside className="learning-insights" aria-label="Learning insights">
+      <ActivityHeatmap activity={progress.activity90Days} />
+      <RepeatPatterns patterns={progress.recurringPatterns} />
+      <section className="insight-section quick-tips" aria-labelledby="quick-tips-title">
+        <div className="insight-heading"><div><p>Quick tip</p><h2 id="quick-tips-title">Move between notes</h2></div><LightbulbIcon /></div>
+        <p><kbd>↑</kbd><kbd>↓</kbd> or <kbd>J</kbd><kbd>K</kbd> work anywhere on this page. You can also swipe vertically on the card.</p>
+      </section>
+    </aside>
   )
 }
 
@@ -86,82 +142,198 @@ function FlashcardDeck({ notes, hasMore, loadingMore, onLoadMore, onDelete }: {
   onDelete: (id: string) => Promise<void>
 }) {
   const [page, setPage] = useState(0)
-  const [direction, setDirection] = useState<"forward" | "backward">("forward")
+  const [direction, setDirection] = useState<"up" | "down">("up")
+  const [outgoingNote, setOutgoingNote] = useState<LearningNote>()
+  const pointerStart = useRef<number | undefined>(undefined)
+  const touchStart = useRef<{ y: number; atTop: boolean; atBottom: boolean } | undefined>(undefined)
+  const wheelDistance = useRef(0)
+  const wheelGestureActive = useRef(false)
+  const wheelStartedAtBoundary = useRef(false)
+  const wheelSwitchedCard = useRef(false)
+  const wheelGestureEndTimer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     setPage((current) => Math.min(current, Math.max(0, notes.length - 1)))
   }, [notes.length])
 
-  const pageOptions = useMemo(() => {
-    if (notes.length <= 5) return notes.map((_, index) => index)
-    const candidates = new Set([0, notes.length - 1, page - 1, page, page + 1])
-    const pages = [...candidates].filter((item) => item >= 0 && item < notes.length).sort((a, b) => a - b)
-    return pages.flatMap<(number | "ellipsis")>((item, index) => {
-      const previous = pages[index - 1] ?? item
-      return index > 0 && item - previous > 1 ? ["ellipsis", item] : [item]
-    })
-  }, [notes, page])
+  useEffect(() => {
+    if (page >= notes.length - 2 && hasMore && !loadingMore) void onLoadMore()
+  }, [hasMore, loadingMore, notes.length, onLoadMore, page])
+
+  useEffect(() => () => {
+    if (wheelGestureEndTimer.current !== undefined) window.clearTimeout(wheelGestureEndTimer.current)
+  }, [])
+
+  useEffect(() => {
+    function handleGlobalKeyboard(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='dialog']")) return
+
+      const forward = ["ArrowDown", "PageDown", "j", "J"].includes(event.key)
+      const backward = ["ArrowUp", "PageUp", "k", "K"].includes(event.key)
+      if (!forward && !backward) return
+
+      const nextPage = Math.max(0, Math.min(notes.length - 1, page + (forward ? 1 : -1)))
+      event.preventDefault()
+      if (nextPage === page || !notes[page]) return
+
+      setDirection(forward ? "up" : "down")
+      setOutgoingNote(notes[page])
+      setPage(nextPage)
+    }
+
+    window.addEventListener("keydown", handleGlobalKeyboard)
+    return () => window.removeEventListener("keydown", handleGlobalKeyboard)
+  }, [notes, outgoingNote, page])
 
   if (!notes.length) return null
 
   const activeNote = notes[page]
   if (!activeNote) return null
-  const remaining = notes.length - page - 1
-
   function goTo(nextPage: number) {
     const clampedPage = Math.max(0, Math.min(notes.length - 1, nextPage))
     if (clampedPage === page) return
-    setDirection(clampedPage > page ? "forward" : "backward")
+    setDirection(clampedPage > page ? "up" : "down")
+    setOutgoingNote(activeNote)
     setPage(clampedPage)
   }
 
+  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+
+    const isNewGesture = !wheelGestureActive.current
+
+    if (isNewGesture) {
+      wheelDistance.current = 0
+      wheelStartedAtBoundary.current = false
+      wheelSwitchedCard.current = false
+    }
+
+    wheelGestureActive.current = true
+    if (wheelGestureEndTimer.current !== undefined) window.clearTimeout(wheelGestureEndTimer.current)
+    wheelGestureEndTimer.current = window.setTimeout(() => {
+      wheelGestureActive.current = false
+      wheelStartedAtBoundary.current = false
+      wheelSwitchedCard.current = false
+      wheelDistance.current = 0
+    }, 300)
+
+    // A trackpad keeps emitting momentum events after the card changes. Consume
+    // the rest of that gesture so it cannot scroll or switch the new card.
+    if (wheelSwitchedCard.current) {
+      event.preventDefault()
+      return
+    }
+
+    const scrollableCard = (event.target as HTMLElement).closest<HTMLElement>(".flashcard-scroll")
+    let atBoundary = true
+    let canScrollContent = false
+    if (scrollableCard) {
+      const atTop = scrollableCard.scrollTop <= 1
+      const atBottom = scrollableCard.scrollTop + scrollableCard.clientHeight >= scrollableCard.scrollHeight - 1
+      atBoundary = event.deltaY < 0 ? atTop : atBottom
+      canScrollContent = !atBoundary
+    }
+
+    if (isNewGesture) wheelStartedAtBoundary.current = atBoundary
+
+    if (canScrollContent) {
+      wheelDistance.current = 0
+      wheelStartedAtBoundary.current = false
+      return
+    }
+
+    if (!wheelStartedAtBoundary.current) {
+      event.preventDefault()
+      return
+    }
+
+    const canMove = event.deltaY > 0 ? page < notes.length - 1 : page > 0
+    if (!canMove) return
+    event.preventDefault()
+    wheelDistance.current += event.deltaY
+    if (Math.abs(wheelDistance.current) < 36) return
+    wheelSwitchedCard.current = true
+    goTo(page + (wheelDistance.current > 0 ? 1 : -1))
+    wheelDistance.current = 0
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "mouse" || event.pointerType === "touch" || (event.target as HTMLElement).closest("button, a, input")) return
+    pointerStart.current = event.clientY
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (pointerStart.current === undefined) return
+    const distance = event.clientY - pointerStart.current
+    pointerStart.current = undefined
+    if (Math.abs(distance) < 52) return
+    goTo(page + (distance < 0 ? 1 : -1))
+  }
+
+  function handleTouchStart(event: ReactTouchEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("button, a, input")) return
+    const scrollableCard = (event.target as HTMLElement).closest<HTMLElement>(".flashcard-scroll")
+    touchStart.current = {
+      y: event.touches[0]?.clientY ?? 0,
+      atTop: !scrollableCard || scrollableCard.scrollTop <= 1,
+      atBottom: !scrollableCard || scrollableCard.scrollTop + scrollableCard.clientHeight >= scrollableCard.scrollHeight - 1,
+    }
+  }
+
+  function handleTouchEnd(event: ReactTouchEvent<HTMLDivElement>) {
+    const start = touchStart.current
+    touchStart.current = undefined
+    if (!start) return
+    const distance = (event.changedTouches[0]?.clientY ?? start.y) - start.y
+    if (distance < -52 && start.atBottom) goTo(page + 1)
+    if (distance > 52 && start.atTop) goTo(page - 1)
+  }
+
   return (
-    <div className="flashcard-deck" aria-label="Flashcard deck">
-      <div className="flashcard-deck-status" aria-live="polite">
-        <span><strong>{page + 1}</strong> / {notes.length}</span>
-        <span>{remaining ? `${remaining} left in this pass` : "Last card"}</span>
-      </div>
-      <div className="flashcard-deck-progress" aria-hidden="true">
-        <span style={{ transform: `scaleX(${(page + 1) / notes.length})` }} />
-      </div>
-
-      <div className="flashcard-deck-stage">
-        {remaining > 1 && <div className="deck-layer deck-layer-back" aria-hidden="true" />}
-        {remaining > 0 && <div className="deck-layer deck-layer-middle" aria-hidden="true" />}
-        <div key={activeNote.id} className="deck-active-card" data-direction={direction}>
-          <NoteFlashcard note={activeNote} onDelete={onDelete} />
+    <div className="flashcard-deck" aria-label="Language note viewer">
+      <div className="flashcard-viewer">
+        <div
+          className="flashcard-deck-stage"
+          role="group"
+          aria-roledescription="vertical card viewer"
+          aria-label={`Card ${page + 1} of ${notes.length}. Swipe, scroll, or use the up and down arrow keys anywhere on the page to change cards.`}
+          onWheel={handleWheel}
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => { pointerStart.current = undefined }}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={() => { touchStart.current = undefined }}
+        >
+          {outgoingNote && (
+            <div key={outgoingNote.id} className="deck-outgoing-card" data-direction={direction} aria-hidden="true"
+              onAnimationEnd={(event) => { if (event.currentTarget === event.target) setOutgoingNote(undefined) }}>
+              <NoteFlashcard note={outgoingNote} onDelete={onDelete} />
+            </div>
+          )}
+          <div key={activeNote.id} className="deck-active-card" data-direction={direction}>
+            <NoteFlashcard note={activeNote} onDelete={onDelete} />
+          </div>
         </div>
-      </div>
 
-      <nav className="flashcard-pagination" aria-label="Flashcard pages">
-        <Button variant="outline" onClick={() => goTo(page - 1)} disabled={page === 0}>
-          <ChevronLeftIcon data-icon="inline-start" /> Previous
-        </Button>
-        <div className="flashcard-page-list">
-          {pageOptions.map((item, index) => item === "ellipsis" ? (
-            <span key={`ellipsis-${index}`} className="flashcard-page-ellipsis" aria-hidden="true">…</span>
-          ) : (
-            <Button
-              key={item}
-              size="icon"
-              variant={item === page ? "default" : "ghost"}
-              onClick={() => goTo(item)}
-              aria-label={`Go to card ${item + 1}`}
-              aria-current={item === page ? "page" : undefined}
-            >
-              {item + 1}
+        <aside className="flashcard-controls" aria-label="Card navigation">
+          <div className="flashcard-deck-status" aria-live="polite">
+            <span><strong>{String(page + 1).padStart(2, "0")}</strong></span>
+            <span className="flashcard-status-rule" aria-hidden="true" />
+            <span>{String(notes.length).padStart(2, "0")}</span>
+          </div>
+          <div className="flashcard-arrow-buttons">
+            <Button variant="outline" size="icon" onClick={() => goTo(page - 1)} disabled={page === 0} aria-label="Previous card">
+              <ArrowUpIcon />
             </Button>
-          ))}
-        </div>
-        <Button variant="outline" onClick={() => goTo(page + 1)} disabled={page === notes.length - 1}>
-          Next <ChevronRightIcon data-icon="inline-end" />
-        </Button>
-      </nav>
-      {hasMore && (
-        <Button variant="outline" className="self-center" disabled={loadingMore} onClick={() => void onLoadMore()}>
-          {loadingMore ? "Loading notes…" : "Load more notes"}
-        </Button>
-      )}
+            <Button variant="outline" size="icon" onClick={() => goTo(page + 1)} disabled={page === notes.length - 1} aria-label="Next card">
+              <ArrowDownIcon />
+            </Button>
+          </div>
+        </aside>
+      </div>
     </div>
   )
 }
@@ -184,7 +356,7 @@ function SettingsCard({ profile, saving, onSave }: {
   }
 
   return (
-    <Card id="settings">
+    <Card id="settings" className="settings-editorial-card">
       <CardHeader>
         <CardTitle>Language settings</CardTitle>
         <CardDescription>Choose your language pair and whether coaching should run in new Codex tasks.</CardDescription>
@@ -245,7 +417,7 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
       : "Only this computer can access these notes. Nothing is uploaded."
 
   return (
-    <Card id="account-sync">
+    <Card id="account-sync" className="settings-editorial-card">
       <CardHeader>
         <CardTitle>{mode === "remote" ? "Account & notes" : "Where should your notes be saved?"}</CardTitle>
         <CardDescription>
@@ -312,17 +484,63 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
   )
 }
 
-function DashboardHeader({ settingsPage = false }: { settingsPage?: boolean }) {
+function DashboardShell({ settingsPage, myNotesPage, data, user, children }: {
+  settingsPage: boolean
+  myNotesPage: boolean
+  data: DashboardData
+  user?: AuthUser
+  children: React.ReactNode
+}) {
   return (
-    <header className="dashboard-header">
-      <Brand />
-      <Button variant="ghost" asChild>
-        <a href={settingsPage ? "/dashboard" : "/dashboard/settings"}>
-          {settingsPage ? <ArrowLeftIcon data-icon="inline-start" /> : <Settings2Icon data-icon="inline-start" />}
-          {settingsPage ? "Back to notes" : "Settings"}
-        </a>
-      </Button>
-    </header>
+    <SidebarProvider>
+      <Sidebar collapsible="icon" className="dashboard-sidebar">
+        <SidebarHeader className="dashboard-sidebar-header">
+          <div className="dashboard-sidebar-brand">
+            <div className="dashboard-sidebar-identity" aria-label="Language Coach">
+              <img src="/assets/language-coach-icon.png" alt="" />
+              <span>Language Coach</span>
+            </div>
+            <SidebarTrigger />
+          </div>
+        </SidebarHeader>
+
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={!settingsPage && !myNotesPage} tooltip="For You">
+                    <Link to="/dashboard"><HomeIcon /><span>For You</span></Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild isActive={myNotesPage} tooltip="My Notes">
+                    <Link to="/dashboard/notes"><BookOpenCheckIcon /><span>My Notes</span></Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={settingsPage} tooltip="Settings">
+                <Link to="/dashboard/settings"><Settings2Icon /><span>Settings</span></Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+          {user && <div className="dashboard-sidebar-profile"><span>Signed in</span><strong>{user.email}</strong></div>}
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+
+      <SidebarInset className="dashboard-shell-main">
+        <SidebarTrigger className="dashboard-mobile-sidebar-trigger md:hidden" />
+        {children}
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
 
@@ -333,21 +551,8 @@ function NotesPage({ data, loadingMore, onLoadMore, onDelete }: {
   onDelete: (id: string) => Promise<void>
 }) {
   return (
-    <div className="min-h-svh">
-      <DashboardHeader />
-      <main className="dashboard-content dashboard-content--focused" id="main-content">
-        <section className="notes-intro">
-          <div>
-            <p className="notes-eyebrow">{data.profile.nativeLanguage} → {data.profile.targetLanguage}</p>
-            <h1>Your language notes</h1>
-            <p>Recall the natural phrasing, then reveal the lesson.</p>
-          </div>
-          <span className="note-count" aria-label={`${data.progress.totalNotes} learning notes`}>
-            <strong>{data.progress.totalNotes}</strong>
-            <span>{data.progress.totalNotes === 1 ? "note" : "notes"}</span>
-          </span>
-        </section>
-
+    <div className="dashboard-feed" id="main-content">
+      <div className="dashboard-learning-layout">
         <section className="flashcard-section" aria-label="English note flashcards">
           {data.notes.length ? (
             <FlashcardDeck notes={data.notes} hasMore={Boolean(data.notesPage?.hasMore)} loadingMore={loadingMore}
@@ -361,17 +566,8 @@ function NotesPage({ data, loadingMore, onLoadMore, onDelete }: {
             </Card>
           )}
         </section>
-
-        <section className="recurring-patterns-section" aria-labelledby="recurring-patterns-title">
-          <Card>
-            <CardHeader>
-              <CardTitle id="recurring-patterns-title">Recurring patterns</CardTitle>
-              <CardDescription>Structures and phrases that have appeared more than once.</CardDescription>
-            </CardHeader>
-            <CardContent><PatternRanking patterns={data.progress.recurringPatterns} /></CardContent>
-          </Card>
-        </section>
-      </main>
+        <LearningInsights progress={data.progress} />
+      </div>
     </div>
   )
 }
@@ -389,9 +585,7 @@ function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncTo
   const topCategory = data.progress.categoryCounts[0]
 
   return (
-    <div className="min-h-svh">
-      <DashboardHeader settingsPage />
-      <main className="dashboard-content settings-page" id="main-content">
+      <div className="settings-page" id="main-content">
         <section className="settings-intro">
           <p className="notes-eyebrow">Settings &amp; activity</p>
           <h1>Learning overview</h1>
@@ -434,8 +628,7 @@ function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncTo
 
         <AccountSyncCard mode={mode} sync={data.sync} user={user} changing={syncChanging} onToggle={onSyncToggle} onSignOut={onSignOut} />
         <SettingsCard profile={data.profile} saving={saving} onSave={onSave} />
-      </main>
-    </div>
+      </div>
   )
 }
 
@@ -628,13 +821,16 @@ export function DashboardApp() {
   }
 
   const settingsPage = window.location.pathname === "/dashboard/settings" || window.location.pathname.startsWith("/dashboard/settings/")
+  const myNotesPage = window.location.pathname === "/dashboard/notes" || window.location.pathname.startsWith("/dashboard/notes/")
 
   return (
     <TooltipProvider>
       <a className="skip-link" href="#main-content">Skip to content</a>
-      {settingsPage
-        ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} />
-        : <NotesPage data={data} loadingMore={loadingMore} onLoadMore={loadMoreNotes} onDelete={deleteNote} />}
+      <DashboardShell settingsPage={settingsPage} myNotesPage={myNotesPage} data={data} user={user}>
+        {settingsPage
+          ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} />
+          : <NotesPage data={data} loadingMore={loadingMore} onLoadMore={loadMoreNotes} onDelete={deleteNote} />}
+      </DashboardShell>
     </TooltipProvider>
   )
 }

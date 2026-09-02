@@ -78,6 +78,7 @@ export interface ProgressSummary {
   activeDays: number;
   currentStreak: number;
   weeklyActivity: Array<{ date: string; count: number }>;
+  activity90Days: Array<{ date: string; count: number }>;
   categoryCounts: Array<{ category: CorrectionCategory; count: number }>;
   recurringPatterns: Array<{ pattern: string; explanation: string; count: number }>;
   languageUse: {
