@@ -17,6 +17,7 @@ const dashboard: DashboardData = {
     activeDays: 0,
     currentStreak: 0,
     weeklyActivity: [],
+    activity90Days: [],
     categoryCounts: [],
     recurringPatterns: [],
     languageUse: { native: 0, target: 0, mixed: 0, other: 0, targetShare: 0 },

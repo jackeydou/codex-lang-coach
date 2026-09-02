@@ -69,7 +69,10 @@ describe("SqliteLearningStore", () => {
       });
     }
 
-    expect(store.getProgress().languageUse).toEqual({
+    const progress = store.getProgress();
+    expect(progress.activity90Days).toHaveLength(90);
+    expect(progress.weeklyActivity).toEqual(progress.activity90Days.slice(-7));
+    expect(progress.languageUse).toEqual({
       native: 1,
       target: 2,
       mixed: 1,

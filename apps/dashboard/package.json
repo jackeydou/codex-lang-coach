@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "check": "tsc -p tsconfig.json --noEmit",
-    "dev": "vite --host 127.0.0.1 --port 43128",
+    "dev": "node scripts/dev.mjs",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

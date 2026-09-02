@@ -8,13 +8,14 @@ export function calculateProgress(notes: LearningNote[], today = new Date()): Pr
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
-  const weeklyActivity = Array.from({ length: 7 }, (_, offset) => {
+  const activityForDays = (days: number) => Array.from({ length: days }, (_, offset) => {
     const date = new Date(today);
     date.setUTCHours(0, 0, 0, 0);
-    date.setUTCDate(date.getUTCDate() - (6 - offset));
+    date.setUTCDate(date.getUTCDate() - (days - 1 - offset));
     const dateString = dayKey(date);
     return { date: dateString, count: counts.get(dateString) ?? 0 };
   });
+  const weeklyActivity = activityForDays(7);
 
   let currentStreak = 0;
   for (let offset = 0; offset < 366; offset += 1) {
@@ -46,13 +47,14 @@ export function calculateProgress(notes: LearningNote[], today = new Date()): Pr
     activeDays: counts.size,
     currentStreak,
     weeklyActivity,
+    activity90Days: activityForDays(90),
     categoryCounts: [...categoryMap.entries()]
       .map(([category, count]) => ({ category, count }))
       .sort((a, b) => b.count - a.count),
     recurringPatterns: [...patternMap.entries()]
       .map(([pattern, value]) => ({ pattern, ...value }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 8),
+      .slice(0, 50),
     languageUse: {
       ...languageUse,
       targetShare: languageUse.native + languageUse.target > 0

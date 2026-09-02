@@ -251,7 +251,7 @@ async function readNotesPage(client: Client, userId: string, url: URL): Promise<
 }
 
 async function readProgress(client: Client, userId: string): Promise<ProgressSummary> {
-  const [summaryResult, weeklyResult, streakResult, categoryResult, patternResult] = await Promise.all([
+  const [summaryResult, activityResult, streakResult, categoryResult, patternResult] = await Promise.all([
     client.query<{
       total_notes: number; active_days: number; notes_this_week: number;
       native_count: number; target_count: number; mixed_count: number; other_count: number;
@@ -269,7 +269,7 @@ async function readProgress(client: Client, userId: string): Promise<ProgressSum
         WHERE deleted.user_id = notes.user_id AND deleted.id = notes.id
       )`, [userId]),
     client.query<{ date: string; count: number }>(`WITH days AS (
-      SELECT generate_series(timezone('UTC', now())::date - 6, timezone('UTC', now())::date, interval '1 day')::date AS day
+      SELECT generate_series(timezone('UTC', now())::date - 89, timezone('UTC', now())::date, interval '1 day')::date AS day
     )
     SELECT to_char(days.day, 'YYYY-MM-DD') AS date, count(notes.id)::int AS count
     FROM days LEFT JOIN public.learning_notes AS notes
@@ -307,7 +307,7 @@ async function readProgress(client: Client, userId: string): Promise<ProgressSum
         SELECT 1 FROM public.deleted_learning_notes AS deleted
         WHERE deleted.user_id = notes.user_id AND deleted.id = notes.id
       )
-      GROUP BY lower(btrim(pattern->>'pattern')) ORDER BY count DESC LIMIT 8`, [userId]),
+      GROUP BY lower(btrim(pattern->>'pattern')) ORDER BY count DESC LIMIT 50`, [userId]),
   ]);
   const summary = summaryResult.rows[0] ?? {
     total_notes: 0, active_days: 0, notes_this_week: 0,
@@ -319,7 +319,8 @@ async function readProgress(client: Client, userId: string): Promise<ProgressSum
     notesThisWeek: summary.notes_this_week,
     activeDays: summary.active_days,
     currentStreak: streakResult.rows[0]?.current_streak ?? 0,
-    weeklyActivity: weeklyResult.rows,
+    weeklyActivity: activityResult.rows.slice(-7),
+    activity90Days: activityResult.rows,
     categoryCounts: categoryResult.rows,
     recurringPatterns: patternResult.rows,
     languageUse: {
