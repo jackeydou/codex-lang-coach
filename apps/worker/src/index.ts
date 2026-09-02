@@ -367,7 +367,7 @@ async function uploadBatch(client: Client, userId: string, batch: SyncUploadBatc
       patterns, examples, native_language, target_language, created_at, device_id
     ) SELECT $1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12, $13
       WHERE NOT EXISTS (SELECT 1 FROM public.deleted_learning_notes WHERE user_id = $1 AND id = $2)
-      ON CONFLICT DO NOTHING`, [userId, note.id, note.turnId ?? null, note.inputLanguage,
+      ON CONFLICT (user_id, id) DO NOTHING`, [userId, note.id, note.turnId ?? null, note.inputLanguage,
       note.originalExpression, note.polishedExpression, JSON.stringify(note.corrections),
       JSON.stringify(note.patterns), JSON.stringify(note.examples), note.nativeLanguage,
       note.targetLanguage, note.createdAt, batch.deviceId]);
