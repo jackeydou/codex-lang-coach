@@ -40,6 +40,10 @@ run = "pnpm build:plugin:agent"
 description = "Build the Claude Code plugin artifact"
 run = "pnpm build:plugin:cc"
 
+[tasks."build:cursor"]
+description = "Build the Cursor plugin artifact"
+run = "pnpm build:plugin:cursor"
+
 [tasks.verify]
 description = "Run type checks, tests, and the production build"
 run = [
@@ -48,6 +52,7 @@ run = [
   "pnpm build",
   "pnpm build:plugin:agent",
   "pnpm build:plugin:cc",
+  "pnpm build:plugin:cursor",
 ]
 
 [tasks."worker:dev"]

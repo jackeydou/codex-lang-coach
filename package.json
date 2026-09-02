@@ -9,6 +9,7 @@
     "build:plugin": "pnpm build:workspace && node scripts/build-plugin.mjs",
     "build:plugin:agent": "pnpm build:workspace && node scripts/build-plugin-agent.mjs",
     "build:plugin:cc": "pnpm build:workspace && node scripts/build-plugin-cc.mjs",
+    "build:plugin:cursor": "pnpm build:workspace && node scripts/build-plugin-cursor.mjs",
     "build:workspace": "pnpm -r build",
     "check": "pnpm -r check",
     "dashboard": "node dist/language-coach/mcp/server.mjs --dashboard",
