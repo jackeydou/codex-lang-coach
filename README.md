@@ -67,7 +67,8 @@ claude plugin install language-coach@language-coach
 ```
 
 The `marketplace-cc` branch uses Claude Code's native `.claude-plugin/plugin.json`, `.mcp.json`,
-and `hooks/hooks.json` layout. It is built separately from the portable Agent Plugins package.
+and `hooks/hooks.json` layout. It is built separately from the native Codex and portable Agent
+Plugins packages.
 
 ### Install from a release archive
 
@@ -124,12 +125,19 @@ agent-plugin-lang-coach/
 ├── packages/
 │   ├── core/               # Domain types, storage, and shared logic
 │   ├── mcp/                # MCP schemas, tools, and handlers
-│   └── plugin/             # Source-only Agent Plugins 1.0.0 scaffold
+│   └── plugin/             # Shared assets, skills, and compiled hooks
+├── packaging/
+│   ├── codex/              # Native Codex metadata, MCP config, and hooks config
+│   ├── agent-plugin/       # Portable Agent Plugins 1.0.0 metadata
+│   └── claude-code/        # Native Claude Code packaging metadata
 ├── scripts/
-│   ├── build-plugin.mjs    # Assembles the Agent Plugins distribution
-│   └── build-plugin-cc.mjs # Assembles the Claude Code distribution
+│   ├── build-plugin.mjs       # Assembles the native Codex distribution
+│   ├── build-plugin-agent.mjs # Assembles the portable Agent Plugins distribution
+│   └── build-plugin-cc.mjs    # Assembles the Claude Code distribution
 ├── dist/
-│   └── language-coach/     # Generated Agent Plugins distribution
+│   └── language-coach/     # Generated native Codex distribution
+├── dist-agent/
+│   └── language-coach/     # Generated portable Agent Plugins distribution
 ├── dist-cc/
 │   └── language-coach/     # Generated Claude Code distribution
 ├── package.json
@@ -146,7 +154,8 @@ The package boundaries are intentional:
 - `@language-coach/worker` owns the authenticated remote API and Hyperdrive connection.
 - `@language-coach/plugin` contains only the source scaffold needed to assemble the plugin variants.
 
-Generated artifacts live in `dist/language-coach` and `dist-cc/language-coach`. Source projects must not write build output into the plugin scaffold.
+Generated artifacts live in `dist/language-coach`, `dist-agent/language-coach`, and
+`dist-cc/language-coach`. Source projects must not write build output into the plugin scaffold.
 
 ## Requirements
 
@@ -182,6 +191,15 @@ pnpm build:plugin
 
 `pnpm build` is an alias for the same full plugin build. Both commands assemble a clean, self-contained distribution at `dist/language-coach`.
 
+Build the portable Agent Plugins 1.0.0 variant separately:
+
+```bash
+pnpm build:plugin:agent
+```
+
+This portable artifact contains skills and MCP configuration, but no hooks because hooks are not
+part of Agent Plugins 1.0.0.
+
 Build the Claude Code variant separately:
 
 ```bash
@@ -198,6 +216,7 @@ This assembles a clean, self-contained distribution at `dist-cc/language-coach`.
 mise install
 mise tasks ls
 mise run dev
+mise run build:agent
 mise run build:cc
 mise run verify
 mise run worker:dev
@@ -310,13 +329,26 @@ Disabling coaching stops prompt injection and note enforcement. Existing notes r
 
 ## Plugin distribution
 
-The default build follows Agent Plugins 1.0.0 and produces this self-contained artifact:
+The default build produces the native Codex artifact. Codex discovers hooks from the root
+`hooks/hooks.json` path:
 
 ```text
 dist/language-coach/
+├── .codex-plugin/plugin.json
+├── .mcp.json
+├── hooks/
+├── skills/
+├── mcp/server.mjs
+└── dashboard/dist/
+```
+
+The portable Agent Plugins 1.0.0 build contains only the standard portable components—skills and
+MCP servers—and deliberately omits host-specific hooks:
+
+```text
+dist-agent/language-coach/
 ├── plugin.json
 ├── mcp.json
-├── com.openai.codex/hooks/
 ├── skills/
 ├── mcp/server.mjs
 └── dashboard/dist/
@@ -367,12 +399,14 @@ pnpm install
 pnpm check
 pnpm test
 pnpm build:plugin
+pnpm build:plugin:agent
 pnpm build:plugin:cc
 ```
 
 The resulting plugin must:
 
-- conform to the Agent Plugins 1.0.0 manifest and MCP schemas;
+- pass Codex plugin validation and load hooks from `hooks/hooks.json`;
+- conform to the Agent Plugins 1.0.0 manifest and MCP schemas for the portable variant;
 - pass `claude plugin validate` for the Claude Code variant;
 - starts its MCP server over stdio;
 - starts the dashboard and serves its API;
