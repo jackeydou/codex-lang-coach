@@ -19,8 +19,10 @@ export type AuthSession = {
   user: AuthUser
 }
 
-export async function initializeAuth(): Promise<{ runtime: DashboardRuntimeConfig; auth?: AuthClient }> {
-  const runtime = await loadDashboardRuntime()
+export async function initializeAuth(
+  options: { includeRemoteAuth?: boolean } = {},
+): Promise<{ runtime: DashboardRuntimeConfig; auth?: AuthClient }> {
+  const runtime = await loadDashboardRuntime(options)
   return {
     runtime,
     auth: runtime.authUrl ? createInternalNeonAuth(runtime.authUrl) as AuthClient : undefined,

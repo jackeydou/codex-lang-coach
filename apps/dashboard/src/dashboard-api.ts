@@ -33,9 +33,11 @@ async function requestJson<T>(url: string, options: RequestInit = {}, token?: st
   return response.json() as Promise<T>
 }
 
-export async function loadDashboardRuntime(): Promise<DashboardRuntimeConfig> {
+export async function loadDashboardRuntime(
+  options: { includeRemoteAuth?: boolean } = {},
+): Promise<DashboardRuntimeConfig> {
   const current = await requestJson<DashboardRuntimeConfig>("/api/config")
-  if (current.authUrl) return current
+  if (current.authUrl || !options.includeRemoteAuth) return current
 
   try {
     const remote = await requestJson<DashboardRuntimeConfig>(`${current.remoteUrl.replace(/\/$/, "")}/api/config`)

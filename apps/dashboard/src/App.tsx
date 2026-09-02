@@ -475,13 +475,15 @@ export function DashboardApp() {
         setRuntime(nextRuntime)
         setAuth(nextAuth)
 
-        const session = nextAuth ? await readAuthSession(nextAuth) : undefined
-        if (session) {
-          setAccessToken(session.token)
-          setUser(session.user)
-          await load(createDashboardApi(nextRuntime, session.token))
-        } else if (nextRuntime.mode === "remote") {
-          setAuthRequired(true)
+        if (nextRuntime.mode === "remote") {
+          const session = nextAuth ? await readAuthSession(nextAuth) : undefined
+          if (session) {
+            setAccessToken(session.token)
+            setUser(session.user)
+            await load(createDashboardApi(nextRuntime, session.token))
+          } else {
+            setAuthRequired(true)
+          }
         } else {
           await load(createDashboardApi(nextRuntime))
         }
@@ -490,6 +492,30 @@ export function DashboardApp() {
       }
     })()
   }, [])
+
+  useEffect(() => {
+    if (runtime?.mode !== "local" || !data?.sync?.enabled || auth) return
+    let active = true
+
+    void (async () => {
+      try {
+        const initialized = await initializeAuth({ includeRemoteAuth: true })
+        if (!active || !initialized.auth) return
+        const session = await readAuthSession(initialized.auth)
+        if (!active) return
+        setRuntime(initialized.runtime)
+        setAuth(initialized.auth)
+        if (session) {
+          setAccessToken(session.token)
+          setUser(session.user)
+        }
+      } catch {
+        // Remote account state must never make the local dashboard unavailable.
+      }
+    })()
+
+    return () => { active = false }
+  }, [auth, data?.sync?.enabled, runtime?.mode])
 
   useEffect(() => {
     if (!api || data?.sync?.state !== "syncing") return

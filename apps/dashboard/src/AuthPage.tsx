@@ -63,7 +63,7 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     let active = true
     void (async () => {
       try {
-        const initialized = await initializeAuth()
+        const initialized = await initializeAuth({ includeRemoteAuth: true })
         if (!initialized.auth) throw new Error("Sign-in is unavailable while the remote service cannot be reached.")
         const session = await readAuthSession(initialized.auth)
         if (!active) return
