@@ -1,0 +1,17 @@
+{
+  "name": "language-coach",
+  "owner": {
+    "name": "Language Coach contributors"
+  },
+  "metadata": {
+    "description": "Language Coach plugins for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "language-coach",
+      "source": "./plugins/language-coach",
+      "description": "Turn everyday Claude Code messages into private, reusable language-learning notes.",
+      "category": "Education"
+    }
+  ]
+}

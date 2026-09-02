@@ -1,0 +1,106 @@
+name: Build and release Claude Code plugin
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.19.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check source
+        run: pnpm check
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build Claude Code plugin
+        run: pnpm build:plugin:cc
+
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $package_version."
+            exit 1
+          fi
+
+      - name: Package Claude Code marketplace
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          bundle_name="language-coach-claude-code-marketplace-v${package_version}"
+          mkdir -p "staging/${bundle_name}/.claude-plugin"
+          mkdir -p "staging/${bundle_name}/plugins"
+          cp packaging/claude-code/marketplace.json "staging/${bundle_name}/.claude-plugin/marketplace.json"
+          cp -R dist-cc/language-coach "staging/${bundle_name}/plugins/language-coach"
+          mkdir -p release-cc
+          tar -C staging -czf "release-cc/${bundle_name}.tar.gz" "$bundle_name"
+          (cd staging && zip -qr "../release-cc/${bundle_name}.zip" "$bundle_name")
+          (cd release-cc && sha256sum *.tar.gz *.zip > SHA256SUMS)
+
+      - name: Upload Claude Code build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: language-coach-claude-code-marketplace
+          path: |
+            release-cc/*.tar.gz
+            release-cc/*.zip
+            release-cc/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Publish Claude Code marketplace branch
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          bundle_name="language-coach-claude-code-marketplace-v${package_version}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin marketplace-cc >/dev/null 2>&1; then
+            git fetch origin marketplace-cc
+            git checkout -B marketplace-cc origin/marketplace-cc
+            git rm -rf --ignore-unmatch .claude-plugin plugins
+          else
+            git checkout --orphan marketplace-cc
+            git rm -rf .
+          fi
+
+          cp -R "staging/${bundle_name}/.claude-plugin" .
+          cp -R "staging/${bundle_name}/plugins" .
+          git add .claude-plugin plugins
+
+          if git diff --cached --quiet; then
+            echo "Claude Code marketplace branch is already up to date."
+            exit 0
+          fi
+
+          git commit -m "Publish Language Coach for Claude Code v${package_version}"
+          git push origin HEAD:marketplace-cc

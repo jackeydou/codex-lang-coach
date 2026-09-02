@@ -1,0 +1,41 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "language-coach",
+  "version": "0.1.5",
+  "description": "Turn everyday messages into private, reusable language-learning notes.",
+  "author": {
+    "name": "Language Coach contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "language-learning",
+    "writing",
+    "coaching",
+    "reflection"
+  ],
+  "extensions": {
+    "com.openai.codex": {
+      "hooks": "./com.openai.codex/hooks/hooks.json",
+      "interface": {
+        "displayName": "Language Coach",
+        "shortDescription": "Learn from the language you use every day.",
+        "longDescription": "Language Coach reviews each message before Codex handles the task, saves only structured learning notes, and turns recurring corrections into a private local progress journal.",
+        "developerName": "Language Coach contributors",
+        "category": "Education",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "defaultPrompt": [
+          "Show me the language patterns I keep repeating.",
+          "Open my private language-learning dashboard.",
+          "Change my native and target languages."
+        ],
+        "brandColor": "#202020",
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/logo.png"
+      }
+    }
+  }
+}

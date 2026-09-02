@@ -57,6 +57,18 @@ The full Git URL works too:
 codex plugin marketplace add https://github.com/jackeydou/codex-lang-coach.git --ref marketplace
 ```
 
+### Install in Claude Code
+
+Add the generated Claude Code marketplace branch, then install the plugin:
+
+```bash
+claude plugin marketplace add jackeydou/codex-lang-coach@marketplace-cc
+claude plugin install language-coach@language-coach
+```
+
+The `marketplace-cc` branch uses Claude Code's native `.claude-plugin/plugin.json`, `.mcp.json`,
+and `hooks/hooks.json` layout. It is built separately from the portable Agent Plugins package.
+
 ### Install from a release archive
 
 Download and extract the ZIP or tar.gz marketplace bundle from the
@@ -112,11 +124,14 @@ agent-plugin-lang-coach/
 ├── packages/
 │   ├── core/               # Domain types, storage, and shared logic
 │   ├── mcp/                # MCP schemas, tools, and handlers
-│   └── plugin/             # Source-only Codex plugin scaffold
+│   └── plugin/             # Source-only Agent Plugins 1.0.0 scaffold
 ├── scripts/
-│   └── build-plugin.mjs    # Assembles and validates the plugin distribution
+│   ├── build-plugin.mjs    # Assembles the Agent Plugins distribution
+│   └── build-plugin-cc.mjs # Assembles the Claude Code distribution
 ├── dist/
-│   └── language-coach/     # Generated, installable plugin
+│   └── language-coach/     # Generated Agent Plugins distribution
+├── dist-cc/
+│   └── language-coach/     # Generated Claude Code distribution
 ├── package.json
 ├── pnpm-workspace.yaml
 └── tsconfig.base.json
@@ -129,9 +144,9 @@ The package boundaries are intentional:
 - `@language-coach/server` owns process startup, MCP stdio transport, the dashboard API, static assets, and graceful shutdown.
 - `@language-coach/dashboard` owns the browser interface.
 - `@language-coach/worker` owns the authenticated remote API and Hyperdrive connection.
-- `@language-coach/plugin` contains only the source scaffold needed to assemble the Codex plugin.
+- `@language-coach/plugin` contains only the source scaffold needed to assemble the plugin variants.
 
-The generated `dist/language-coach` directory is the only installable artifact. Source projects must not write build output into the plugin scaffold.
+Generated artifacts live in `dist/language-coach` and `dist-cc/language-coach`. Source projects must not write build output into the plugin scaffold.
 
 ## Requirements
 
@@ -167,6 +182,14 @@ pnpm build:plugin
 
 `pnpm build` is an alias for the same full plugin build. Both commands assemble a clean, self-contained distribution at `dist/language-coach`.
 
+Build the Claude Code variant separately:
+
+```bash
+pnpm build:plugin:cc
+```
+
+This assembles a clean, self-contained distribution at `dist-cc/language-coach`.
+
 ## Mise tasks
 
 [`mise.toml`](./mise.toml) pins Node and pnpm and provides shortcuts for the common project workflows:
@@ -175,6 +198,7 @@ pnpm build:plugin
 mise install
 mise tasks ls
 mise run dev
+mise run build:cc
 mise run verify
 mise run worker:dev
 ```
@@ -286,11 +310,23 @@ Disabling coaching stops prompt injection and note enforcement. Existing notes r
 
 ## Plugin distribution
 
-The build produces this self-contained artifact:
+The default build follows Agent Plugins 1.0.0 and produces this self-contained artifact:
 
 ```text
 dist/language-coach/
-├── .codex-plugin/plugin.json
+├── plugin.json
+├── mcp.json
+├── com.openai.codex/hooks/
+├── skills/
+├── mcp/server.mjs
+└── dashboard/dist/
+```
+
+The Claude Code build produces its native layout independently:
+
+```text
+dist-cc/language-coach/
+├── .claude-plugin/plugin.json
 ├── .mcp.json
 ├── hooks/
 ├── skills/
@@ -314,6 +350,14 @@ the self-contained plugin:
 plugins/language-coach/
 ```
 
+The separate Claude Code workflow uses the same tag and manual-release conditions. It packages the
+Claude Code artifact and publishes this generated tree to `marketplace-cc`:
+
+```text
+.claude-plugin/marketplace.json
+plugins/language-coach/
+```
+
 ## Validation
 
 Before submitting a change, run:
@@ -323,11 +367,13 @@ pnpm install
 pnpm check
 pnpm test
 pnpm build:plugin
+pnpm build:plugin:cc
 ```
 
 The resulting plugin must:
 
-- pass the Codex plugin validator;
+- conform to the Agent Plugins 1.0.0 manifest and MCP schemas;
+- pass `claude plugin validate` for the Claude Code variant;
 - starts its MCP server over stdio;
 - starts the dashboard and serves its API;
 - uses one shared database schema across hooks, MCP tools, and the dashboard;
