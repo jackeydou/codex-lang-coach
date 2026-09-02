@@ -20,7 +20,9 @@ await cp(join(packaging, "plugin.json"), join(target, ".codex-plugin", "plugin.j
 await cp(join(packaging, "mcp.json"), join(target, ".mcp.json"));
 await mkdir(join(target, "hooks"), { recursive: true });
 await cp(join(packaging, "hooks.json"), join(target, "hooks", "hooks.json"));
-await cp(join(root, "packages", "plugin", "dist", "hooks"), join(target, "hooks"), { recursive: true });
+for (const hook of ["user-prompt-submit.mjs", "stop.mjs"]) {
+  await cp(join(root, "packages", "plugin", "dist", "hooks", hook), join(target, "hooks", hook));
+}
 await mkdir(join(target, "mcp"), { recursive: true });
 await cp(join(root, "apps", "server", "dist", "server.mjs"), join(target, "mcp", "server.mjs"));
 await mkdir(join(target, "dashboard"), { recursive: true });

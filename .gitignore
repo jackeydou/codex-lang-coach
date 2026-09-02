@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-agent/
 dist-cc/
+dist-cursor/
 apps/*/dist/
 packages/*/dist/
 .DS_Store

@@ -1,0 +1,16 @@
+{
+  "name": "language-coach",
+  "owner": {
+    "name": "Language Coach contributors"
+  },
+  "metadata": {
+    "description": "Language Coach plugins for Cursor."
+  },
+  "plugins": [
+    {
+      "name": "language-coach",
+      "source": "./plugins/language-coach",
+      "description": "Turn everyday Cursor messages into private, reusable language-learning notes."
+    }
+  ]
+}

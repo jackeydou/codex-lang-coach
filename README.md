@@ -70,6 +70,16 @@ The `marketplace-cc` branch uses Claude Code's native `.claude-plugin/plugin.jso
 and `hooks/hooks.json` layout. It is built separately from the native Codex and portable Agent
 Plugins packages.
 
+### Install in Cursor
+
+The generated `marketplace-cursor` branch contains the native Cursor plugin and marketplace
+manifest. Add that repository and branch through Cursor's team marketplace or copy
+`plugins/language-coach` into `~/.cursor/plugins/local/language-coach` for local testing.
+
+The Cursor build uses `.cursor-plugin/plugin.json`, `mcp.json`, and `hooks/hooks.json`. Its
+`sessionStart` hook injects the coaching instructions, while its `stop` hook performs the final
+learning-note check using Cursor's native hook protocol.
+
 ### Install from a release archive
 
 Download and extract the ZIP or tar.gz marketplace bundle from the
@@ -129,17 +139,21 @@ agent-plugin-lang-coach/
 ├── packaging/
 │   ├── codex/              # Native Codex metadata, MCP config, and hooks config
 │   ├── agent-plugin/       # Portable Agent Plugins 1.0.0 metadata
-│   └── claude-code/        # Native Claude Code packaging metadata
+│   ├── claude-code/        # Native Claude Code packaging metadata
+│   └── cursor/             # Native Cursor packaging metadata
 ├── scripts/
 │   ├── build-plugin.mjs       # Assembles the native Codex distribution
 │   ├── build-plugin-agent.mjs # Assembles the portable Agent Plugins distribution
-│   └── build-plugin-cc.mjs    # Assembles the Claude Code distribution
+│   ├── build-plugin-cc.mjs    # Assembles the Claude Code distribution
+│   └── build-plugin-cursor.mjs # Assembles the Cursor distribution
 ├── dist/
 │   └── language-coach/     # Generated native Codex distribution
 ├── dist-agent/
 │   └── language-coach/     # Generated portable Agent Plugins distribution
 ├── dist-cc/
 │   └── language-coach/     # Generated Claude Code distribution
+├── dist-cursor/
+│   └── language-coach/     # Generated Cursor distribution
 ├── package.json
 ├── pnpm-workspace.yaml
 └── tsconfig.base.json
@@ -154,8 +168,9 @@ The package boundaries are intentional:
 - `@language-coach/worker` owns the authenticated remote API and Hyperdrive connection.
 - `@language-coach/plugin` contains only the source scaffold needed to assemble the plugin variants.
 
-Generated artifacts live in `dist/language-coach`, `dist-agent/language-coach`, and
-`dist-cc/language-coach`. Source projects must not write build output into the plugin scaffold.
+Generated artifacts live in `dist/language-coach`, `dist-agent/language-coach`,
+`dist-cc/language-coach`, and `dist-cursor/language-coach`. Source projects must not write build
+output into the plugin scaffold.
 
 ## Requirements
 
@@ -208,6 +223,14 @@ pnpm build:plugin:cc
 
 This assembles a clean, self-contained distribution at `dist-cc/language-coach`.
 
+Build the Cursor variant separately:
+
+```bash
+pnpm build:plugin:cursor
+```
+
+This assembles a native Cursor distribution at `dist-cursor/language-coach`.
+
 ## Mise tasks
 
 [`mise.toml`](./mise.toml) pins Node and pnpm and provides shortcuts for the common project workflows:
@@ -218,6 +241,7 @@ mise tasks ls
 mise run dev
 mise run build:agent
 mise run build:cc
+mise run build:cursor
 mise run verify
 mise run worker:dev
 ```
@@ -366,6 +390,21 @@ dist-cc/language-coach/
 └── dashboard/dist/
 ```
 
+The Cursor build also uses a native host layout and Cursor-specific hook executables:
+
+```text
+dist-cursor/language-coach/
+├── .cursor-plugin/plugin.json
+├── mcp.json
+├── hooks/
+│   ├── hooks.json
+│   ├── cursor-session-start.mjs
+│   └── cursor-stop.mjs
+├── skills/
+├── mcp/server.mjs
+└── dashboard/dist/
+```
+
 The distribution must not depend on workspace imports, repository-relative source paths, TypeScript execution, or a repository-level `node_modules` directory. It should continue to work when copied outside this repository.
 
 Pushing a version tag such as v0.1.3 runs the GitHub Actions release workflow. The workflow checks
@@ -390,6 +429,14 @@ Claude Code artifact and publishes this generated tree to `marketplace-cc`:
 plugins/language-coach/
 ```
 
+The Cursor workflow follows the same release conditions and publishes its generated marketplace
+to `marketplace-cursor`:
+
+```text
+.cursor-plugin/marketplace.json
+plugins/language-coach/
+```
+
 ## Validation
 
 Before submitting a change, run:
@@ -401,6 +448,7 @@ pnpm test
 pnpm build:plugin
 pnpm build:plugin:agent
 pnpm build:plugin:cc
+pnpm build:plugin:cursor
 ```
 
 The resulting plugin must:
@@ -408,6 +456,7 @@ The resulting plugin must:
 - pass Codex plugin validation and load hooks from `hooks/hooks.json`;
 - conform to the Agent Plugins 1.0.0 manifest and MCP schemas for the portable variant;
 - pass `claude plugin validate` for the Claude Code variant;
+- use Cursor's native `sessionStart` and `stop` hook protocols for the Cursor variant;
 - starts its MCP server over stdio;
 - starts the dashboard and serves its API;
 - uses one shared database schema across hooks, MCP tools, and the dashboard;

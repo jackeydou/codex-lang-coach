@@ -1,0 +1,106 @@
+name: Build and release Cursor plugin
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.19.0 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check source
+        run: pnpm check
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Build Cursor plugin
+        run: pnpm build:plugin:cursor
+
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $package_version."
+            exit 1
+          fi
+
+      - name: Package Cursor marketplace
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          bundle_name="language-coach-cursor-marketplace-v${package_version}"
+          mkdir -p "staging/${bundle_name}/.cursor-plugin"
+          mkdir -p "staging/${bundle_name}/plugins"
+          cp packaging/cursor/marketplace.json "staging/${bundle_name}/.cursor-plugin/marketplace.json"
+          cp -R dist-cursor/language-coach "staging/${bundle_name}/plugins/language-coach"
+          mkdir -p release-cursor
+          tar -C staging -czf "release-cursor/${bundle_name}.tar.gz" "$bundle_name"
+          (cd staging && zip -qr "../release-cursor/${bundle_name}.zip" "$bundle_name")
+          (cd release-cursor && sha256sum *.tar.gz *.zip > SHA256SUMS)
+
+      - name: Upload Cursor build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: language-coach-cursor-marketplace
+          path: |
+            release-cursor/*.tar.gz
+            release-cursor/*.zip
+            release-cursor/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Publish Cursor marketplace branch
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')
+        run: |
+          package_version="$(node --print "require('./package.json').version")"
+          bundle_name="language-coach-cursor-marketplace-v${package_version}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code --heads origin marketplace-cursor >/dev/null 2>&1; then
+            git fetch origin marketplace-cursor
+            git checkout -B marketplace-cursor origin/marketplace-cursor
+            git rm -rf --ignore-unmatch .cursor-plugin plugins
+          else
+            git checkout --orphan marketplace-cursor
+            git rm -rf .
+          fi
+
+          cp -R "staging/${bundle_name}/.cursor-plugin" .
+          cp -R "staging/${bundle_name}/plugins" .
+          git add .cursor-plugin plugins
+
+          if git diff --cached --quiet; then
+            echo "Cursor marketplace branch is already up to date."
+            exit 0
+          fi
+
+          git commit -m "Publish Language Coach for Cursor v${package_version}"
+          git push origin HEAD:marketplace-cursor
