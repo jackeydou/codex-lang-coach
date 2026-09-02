@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from "react"
 import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, LearningNote, SyncStatus } from "@language-coach/core"
-import { ActivityIcon, ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, BookOpenCheckIcon, CheckIcon, CloudIcon, FlameIcon, HomeIcon, LaptopIcon, LightbulbIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
+import { ActivityIcon, ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, BookOpenCheckIcon, CheckIcon, CloudIcon, FlameIcon, HomeIcon, LaptopIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from "react-router-dom"
 
 import { AuthPage } from "@/AuthPage"
@@ -15,11 +15,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger } from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { createDashboardApi, type DashboardApi, UnauthorizedError } from "@/dashboard-api"
+import { useIsMobile } from "@/hooks/use-mobile"
 
 function LoadingDashboard() {
   return (
@@ -126,10 +127,6 @@ function LearningInsights({ progress }: { progress: DashboardData["progress"] })
     <aside className="learning-insights" aria-label="Learning insights">
       <ActivityHeatmap activity={progress.activity90Days} />
       <RepeatPatterns patterns={progress.recurringPatterns} />
-      <section className="insight-section quick-tips" aria-labelledby="quick-tips-title">
-        <div className="insight-heading"><div><p>Quick tip</p><h2 id="quick-tips-title">Move between notes</h2></div><LightbulbIcon /></div>
-        <p><kbd>↑</kbd><kbd>↓</kbd> or <kbd>J</kbd><kbd>K</kbd> work anywhere on this page. You can also swipe vertically on the card.</p>
-      </section>
     </aside>
   )
 }
@@ -484,10 +481,43 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
   )
 }
 
-function DashboardShell({ settingsPage, myNotesPage, data, user, children }: {
+function DashboardSidebarNavigation({ settingsPage, myNotesPage, insightsPage }: {
   settingsPage: boolean
   myNotesPage: boolean
-  data: DashboardData
+  insightsPage: boolean
+}) {
+  const { isMobile, setOpenMobile } = useSidebar()
+  const closeMobileSidebar = () => setOpenMobile(false)
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild isActive={!settingsPage && !myNotesPage && !insightsPage} tooltip="For You">
+          <Link to="/dashboard" onClick={closeMobileSidebar}><HomeIcon /><span>For You</span></Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild isActive={myNotesPage} tooltip="My Notes">
+          <Link to="/dashboard/notes" onClick={closeMobileSidebar}><BookOpenCheckIcon /><span>My Notes</span></Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+      {isMobile && !settingsPage && (
+        <SidebarMenuItem>
+          <SidebarMenuButton asChild isActive={insightsPage} tooltip="Insights">
+            <Link to="/dashboard/insights" onClick={closeMobileSidebar}>
+              <ActivityIcon /><span>Insights</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      )}
+    </SidebarMenu>
+  )
+}
+
+function DashboardShell({ settingsPage, myNotesPage, insightsPage, user, children }: {
+  settingsPage: boolean
+  myNotesPage: boolean
+  insightsPage: boolean
   user?: AuthUser
   children: React.ReactNode
 }) {
@@ -507,18 +537,11 @@ function DashboardShell({ settingsPage, myNotesPage, data, user, children }: {
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={!settingsPage && !myNotesPage} tooltip="For You">
-                    <Link to="/dashboard"><HomeIcon /><span>For You</span></Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild isActive={myNotesPage} tooltip="My Notes">
-                    <Link to="/dashboard/notes"><BookOpenCheckIcon /><span>My Notes</span></Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
+              <DashboardSidebarNavigation
+                settingsPage={settingsPage}
+                myNotesPage={myNotesPage}
+                insightsPage={insightsPage}
+              />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
@@ -550,6 +573,8 @@ function NotesPage({ data, loadingMore, onLoadMore, onDelete }: {
   onLoadMore: () => Promise<void>
   onDelete: (id: string) => Promise<void>
 }) {
+  const isMobile = useIsMobile()
+
   return (
     <div className="dashboard-feed" id="main-content">
       <div className="dashboard-learning-layout">
@@ -566,8 +591,20 @@ function NotesPage({ data, loadingMore, onLoadMore, onDelete }: {
             </Card>
           )}
         </section>
-        <LearningInsights progress={data.progress} />
+        {!isMobile && <LearningInsights progress={data.progress} />}
       </div>
+    </div>
+  )
+}
+
+function InsightsPage({ data }: { data: DashboardData }) {
+  return (
+    <div className="insights-page" id="main-content">
+      <header className="insights-page-header">
+        <p className="notes-eyebrow">Learning activity</p>
+        <h1>Insights</h1>
+      </header>
+      <LearningInsights progress={data.progress} />
     </div>
   )
 }
@@ -822,14 +859,17 @@ export function DashboardApp() {
 
   const settingsPage = window.location.pathname === "/dashboard/settings" || window.location.pathname.startsWith("/dashboard/settings/")
   const myNotesPage = window.location.pathname === "/dashboard/notes" || window.location.pathname.startsWith("/dashboard/notes/")
+  const insightsPage = window.location.pathname === "/dashboard/insights" || window.location.pathname.startsWith("/dashboard/insights/")
 
   return (
     <TooltipProvider>
       <a className="skip-link" href="#main-content">Skip to content</a>
-      <DashboardShell settingsPage={settingsPage} myNotesPage={myNotesPage} data={data} user={user}>
+      <DashboardShell settingsPage={settingsPage} myNotesPage={myNotesPage} insightsPage={insightsPage} user={user}>
         {settingsPage
           ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} />
-          : <NotesPage data={data} loadingMore={loadingMore} onLoadMore={loadMoreNotes} onDelete={deleteNote} />}
+          : insightsPage
+            ? <InsightsPage data={data} />
+            : <NotesPage data={data} loadingMore={loadingMore} onLoadMore={loadMoreNotes} onDelete={deleteNote} />}
       </DashboardShell>
     </TooltipProvider>
   )
