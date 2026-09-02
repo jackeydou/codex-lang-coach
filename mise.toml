@@ -29,8 +29,12 @@ description = "Run all workspace tests"
 run = "pnpm test"
 
 [tasks.build]
-description = "Build the complete plugin artifact"
+description = "Build the Agent Plugins artifact"
 run = "pnpm build"
+
+[tasks."build:cc"]
+description = "Build the Claude Code plugin artifact"
+run = "pnpm build:plugin:cc"
 
 [tasks.verify]
 description = "Run type checks, tests, and the production build"
@@ -38,6 +42,7 @@ run = [
   "pnpm check",
   "pnpm test",
   "pnpm build",
+  "pnpm build:plugin:cc",
 ]
 
 [tasks."worker:dev"]
