@@ -261,6 +261,32 @@
   scrollbar-color: #d1c9bf transparent;
 }
 
+.insights-page {
+  width: min(100%, 44rem);
+  height: 100svh;
+  overflow-y: auto;
+  margin-inline: auto;
+  padding: clamp(4.75rem, 12vw, 6rem) clamp(0.75rem, 4vw, 1.5rem) 2rem;
+}
+
+.insights-page-header {
+  margin: 0 0 1.25rem;
+  padding-inline: 0.25rem;
+}
+
+.insights-page-header h1 {
+  margin: 0.35rem 0 0;
+  font-family: "Signifier", Georgia, serif;
+  font-size: clamp(2rem, 10vw, 3rem);
+  font-weight: 400;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.insights-page .learning-insights {
+  overflow: visible;
+}
+
 .insight-section { padding: 1.35rem 1.25rem; }
 .insight-section + .insight-section { border-top: 1px solid #ddd7cf; }
 
@@ -339,11 +365,6 @@
 
 .patterns-pagination { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #e3ddd5; padding-top: 0.65rem; }
 .patterns-pagination span { color: #8c847b; font-size: 0.65rem; font-variant-numeric: tabular-nums; }
-
-.quick-tips { margin-top: auto; }
-.quick-tips .insight-heading { margin-bottom: 0.75rem; }
-.quick-tips > p { margin: 0; color: #766f67; font-size: 0.72rem; line-height: 1.65; }
-.quick-tips kbd { display: inline-grid; min-width: 1.45rem; height: 1.45rem; place-items: center; border: 1px solid #d5cec5; border-radius: 5px; background: #fffdfa; margin-right: 0.2rem; box-shadow: 0 1px 0 #cfc7bd; color: #3f3a35; font: 600 0.65rem/1 "Geist Variable", sans-serif; }
 
 .brand {
   display: inline-flex;
@@ -937,6 +958,12 @@
   .flashcard-section { height: calc(100svh - 1.7rem); min-height: 34rem; }
   .learning-insights { overflow: visible; }
   .activity-heatmap { grid-auto-columns: minmax(0.62rem, 1fr); width: 100%; }
+}
+
+@media (max-width: 47.99rem) {
+  .dashboard-feed { overflow: hidden; }
+  .dashboard-learning-layout { height: 100%; }
+  .flashcard-section { height: 100%; min-height: 0; }
 }
 
 @media (pointer: coarse) {
