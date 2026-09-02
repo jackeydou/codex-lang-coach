@@ -4,9 +4,7 @@
     "languageCoach": {
       "type": "stdio",
       "command": "node",
-      "args": [
-        "${PLUGIN_ROOT}/mcp/server.mjs"
-      ]
+      "args": ["${PLUGIN_ROOT}/mcp/server.mjs"]
     }
   }
 }

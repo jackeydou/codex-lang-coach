@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-agent/
 dist-cc/
 apps/*/dist/
 packages/*/dist/

@@ -1,6 +1,6 @@
 ---
 name: language-coach
-description: Review language-learning history, reflect on recurring mistakes, update native and target languages, or open the local Language Coach dashboard. The coaching itself is enabled automatically by plugin hooks.
+description: Review language-learning history, reflect on recurring mistakes, update native and target languages, or open the local Language Coach dashboard.
 ---
 
 # Language Coach

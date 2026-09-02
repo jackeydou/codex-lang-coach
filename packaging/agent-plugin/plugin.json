@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "language-coach",
+  "version": "0.1.5",
+  "description": "Turn everyday messages into private, reusable language-learning notes.",
+  "author": { "name": "Language Coach contributors" },
+  "license": "MIT",
+  "keywords": ["language-learning", "writing", "coaching", "reflection"]
+}
