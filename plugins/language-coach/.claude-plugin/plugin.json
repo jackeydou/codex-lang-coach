@@ -1,0 +1,15 @@
+{
+  "name": "language-coach",
+  "version": "0.2.0+claude-code.20260903032259",
+  "description": "Turn everyday Claude Code messages into private, reusable language-learning notes.",
+  "author": {
+    "name": "Language Coach contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "language-learning",
+    "writing",
+    "coaching",
+    "reflection"
+  ]
+}
