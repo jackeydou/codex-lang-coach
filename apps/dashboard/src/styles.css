@@ -1084,13 +1084,179 @@
   line-height: 1;
 }
 
-.landing-hero p {
+.landing-hero > .landing-column > p {
   width: 400px;
   max-width: 100%;
   margin: 0 auto;
   color: #746e68;
   font-size: 18px;
   line-height: 26px;
+}
+
+.agent-install {
+  width: min(680px, calc(100vw - 48px));
+  margin: 32px auto 0;
+  text-align: left;
+}
+
+.agent-install-trigger {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 10px;
+  margin: 0 auto;
+  border: 1px solid #e7e2dc;
+  border-radius: 999px;
+  background: #f6f3ee;
+  padding: 10px 16px;
+  color: #292623;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 24px;
+  cursor: pointer;
+  transition: transform 140ms cubic-bezier(.25, 1, .5, 1), border-color 140ms cubic-bezier(.25, 1, .5, 1), background 140ms cubic-bezier(.25, 1, .5, 1);
+}
+
+.agent-install-trigger > svg:first-child { width: 18px; height: 18px; color: #d86020; stroke-width: 1.75; }
+
+.agent-install-chevron {
+  width: 16px;
+  height: 16px;
+  color: #8a837b;
+  stroke-width: 1.75;
+  transition: transform 240ms cubic-bezier(.65, 0, .35, 1);
+}
+
+.agent-install-trigger[aria-expanded="true"] .agent-install-chevron { transform: rotate(180deg); }
+.agent-install-trigger:active { transform: translateY(1px); }
+
+.agent-install-trigger:focus-visible,
+.agent-install-tab:focus-visible,
+.agent-install-copy:focus-visible {
+  outline: 2px solid #a74416;
+  outline-offset: 3px;
+}
+
+.agent-install-reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 300ms cubic-bezier(.65, 0, .35, 1), opacity 180ms cubic-bezier(.7, 0, .84, 0);
+}
+
+.agent-install-reveal[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition: grid-template-rows 360ms cubic-bezier(.16, 1, .3, 1), opacity 220ms cubic-bezier(.16, 1, .3, 1);
+}
+
+.agent-install-reveal-inner { min-height: 0; overflow: hidden; }
+
+.agent-install-panel {
+  margin-top: 16px;
+  border: 1px solid #e3ded7;
+  border-radius: 18px;
+  background: #fbf9f5;
+  box-shadow: 0 1px 2px rgb(57 43 30 / 5%), 0 18px 42px rgb(57 43 30 / 7%);
+  padding: 12px;
+}
+
+.agent-install-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  border-radius: 12px;
+  background: #ebe7e0;
+  padding: 4px;
+}
+
+.agent-install-tab {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #706a63;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  cursor: pointer;
+  transition: background 140ms cubic-bezier(.25, 1, .5, 1), color 140ms cubic-bezier(.25, 1, .5, 1), box-shadow 140ms cubic-bezier(.25, 1, .5, 1);
+}
+
+.agent-install-tab[aria-selected="true"] { background: #fffefa; box-shadow: 0 1px 3px rgb(57 43 30 / 12%); color: #24211f; }
+
+.agent-install-content {
+  animation: agent-install-content-in 220ms cubic-bezier(.16, 1, .3, 1);
+  padding: 20px 8px 8px;
+}
+
+.agent-install-content > p {
+  width: auto;
+  margin: 0 0 12px;
+  color: #59544e;
+  font-size: 14px;
+  line-height: 20px;
+  text-align: left;
+}
+
+.agent-install-command {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid #dcd6ce;
+  border-radius: 12px;
+  background: #f1eee9;
+}
+
+.agent-install-command code {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 16px;
+  color: #2c2926;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-variant-ligatures: none;
+  line-height: 20px;
+  text-align: left;
+}
+
+.agent-install-copy {
+  display: flex;
+  min-width: 112px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-left: 1px solid #dcd6ce;
+  background: #fffefa;
+  padding: 12px 14px;
+  color: #34302c;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  cursor: pointer;
+  transition: background 120ms cubic-bezier(.25, 1, .5, 1), color 120ms cubic-bezier(.25, 1, .5, 1);
+}
+
+.agent-install-copy svg { width: 16px; height: 16px; stroke-width: 1.8; }
+.agent-install-copy:active { background: #e9e4dd; }
+
+.agent-install-note { display: block; margin-top: 10px; color: #918a82; font-size: 12px; line-height: 18px; }
+
+@keyframes agent-install-content-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (hover: hover) {
+  .agent-install-trigger:hover { border-color: #d7d0c7; background: #efeae3; transform: translateY(-1px); }
+  .agent-install-tab:hover:not([aria-selected="true"]) { color: #37332f; }
+  .agent-install-copy:hover { background: #f8f4ed; color: #a74416; }
 }
 
 .cover-stage {
@@ -1387,7 +1553,21 @@
   .landing-hero { padding-top: 128px; }
   .landing-hero::before { margin-bottom: 40px; }
   .landing-hero h1 { font-size: 40px; letter-spacing: -1px; line-height: 40px; text-align: center; }
-  .landing-hero p { margin: 0 auto; text-align: center; }
+  .landing-hero > .landing-column > p { margin: 0 auto; text-align: center; }
+
+  .agent-install {
+    width: min(350px, calc(100vw - 32px));
+    margin-top: 28px;
+    margin-left: 50%;
+    transform: translateX(-50%);
+  }
+  .agent-install-panel { border-radius: 16px; padding: 8px; }
+  .agent-install-tabs { grid-template-columns: 1fr; }
+  .agent-install-tab { min-height: 44px; }
+  .agent-install-command { grid-template-columns: 1fr; }
+  .agent-install-copy { min-height: 48px; border-top: 1px solid #dcd6ce; border-left: 0; }
+  .agent-install-content { padding: 18px 4px 4px; }
+  .agent-install-command code { padding: 14px; }
 
   .cover-stage {
     height: 420px;
@@ -1495,6 +1675,12 @@
   .landing-login-link,
   .landing-cta,
   .landing-secondary-cta { transition: none; }
+  .agent-install-trigger,
+  .agent-install-chevron,
+  .agent-install-reveal,
+  .agent-install-content,
+  .agent-install-tab,
+  .agent-install-copy { animation: none; transition: none; }
 }
 
 /* Account pages — editorial calm carried over from the marketing site. */

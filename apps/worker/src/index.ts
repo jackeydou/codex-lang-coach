@@ -17,6 +17,12 @@ interface Env {
   NEON_AUTH_URL: string;
 }
 
+const AGENT_GUIDES: Record<string, string> = {
+  "/codex": "/guides/codex.txt",
+  "/claude": "/guides/claude.txt",
+  "/cursor": "/guides/cursor.txt",
+};
+
 type AuthenticatedUser = { id: string; source: "jwt" | "sync"; deviceId?: string; tokenHash?: string };
 type ProfileRow = { native_language: string; target_language: string; coach_enabled: boolean; updated_at: Date | string };
 type NoteRow = {
@@ -506,6 +512,15 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     try {
+      const guidePath = AGENT_GUIDES[url.pathname];
+      if (guidePath && (request.method === "GET" || request.method === "HEAD")) {
+        const assetUrl = new URL(guidePath, url.origin);
+        const asset = await env.ASSETS.fetch(new Request(assetUrl, request));
+        const headers = new Headers(asset.headers);
+        headers.set("content-type", "text/plain; charset=utf-8");
+        headers.set("x-content-type-options", "nosniff");
+        return new Response(request.method === "HEAD" ? null : asset.body, { status: asset.status, headers });
+      }
       if (url.pathname.startsWith("/api/")) return await handleApi(request, env, url);
       return env.ASSETS.fetch(request);
     } catch (error) {

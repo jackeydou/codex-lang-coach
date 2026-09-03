@@ -1,0 +1,29 @@
+Language Coach plugin installation guide for Claude Code
+
+This guide is for a Claude Code agent helping a user install Language Coach.
+
+Language Coach reviews the language in each user message, gives a brief natural-language correction when useful, and then continues with the user's original task. It saves only language-learning notes.
+
+Complete these steps for the user instead of only describing them:
+
+1. Confirm that the Claude Code CLI is available:
+
+   claude --version
+
+2. Add the generated Language Coach marketplace branch:
+
+   claude plugin marketplace add jackeydou/codex-lang-coach@marketplace-cc
+
+   The repository is private. If Git authentication fails, explain that the current GitHub account needs read access to jackeydou/codex-lang-coach, help the user authenticate Git, and retry.
+
+3. Install the plugin:
+
+   claude plugin install language-coach@language-coach
+
+4. Verify that the plugin appears and is enabled:
+
+   claude plugin list
+
+5. Plugin hooks and tools are loaded when a session starts. After verification succeeds, tell the user to start a new Claude Code session. In that session, Language Coach will coach useful language patterns before continuing with the user's task.
+
+Do not claim setup is complete until installation and verification both succeed. If a step fails, diagnose it, retry safe recovery steps, and report the exact unfinished step.

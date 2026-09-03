@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type RefObject } from "react"
 import { Link } from "react-router-dom"
 
 import { initializeAuth, readAuthSession } from "@/auth-client"
+import { AgentInstallPanel } from "@/components/agent-install-panel"
 
 const covers = [
   { title: "Gentle\nCorrections", detail: "Clear feedback that keeps your meaning intact.", className: "cover-orange" },
@@ -393,6 +394,7 @@ export function LandingPage() {
         <div className="landing-column landing-column--center">
           <h1>Language Coach</h1>
           <p>A quiet learning companion for people who want to write natural English while getting real work done.</p>
+          <AgentInstallPanel />
         </div>
       </section>
 
