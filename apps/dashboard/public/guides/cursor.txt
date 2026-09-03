@@ -1,0 +1,25 @@
+Language Coach plugin installation guide for Cursor
+
+This guide is for a Cursor coding agent helping a user install Language Coach in a workspace.
+
+Language Coach reviews the language in each user message, gives a brief natural-language correction when useful, and then continues with the user's original task. It saves only language-learning notes.
+
+The generated Cursor plugin is published from the marketplace-cursor branch of:
+
+https://github.com/jackeydou/codex-lang-coach
+
+Complete these steps:
+
+1. Check whether this Cursor installation supports adding a Git repository and branch to its team marketplace. If it does, add the repository above using the marketplace-cursor branch, then install the language-coach plugin.
+
+2. If the marketplace UI is not available, check out the marketplace-cursor branch and copy its plugins/language-coach directory into:
+
+   ~/.cursor/plugins/local/language-coach
+
+   The repository is private. If Git authentication fails, explain that the current GitHub account needs read access to jackeydou/codex-lang-coach and help the user authenticate Git before retrying.
+
+3. Verify that Cursor recognizes the plugin and that its sessionStart and stop hooks are enabled.
+
+4. Start a new Cursor agent session so the new hooks and MCP tools load.
+
+Do not claim setup is complete until installation and verification both succeed. If Cursor requires the user to approve a marketplace, plugin, or hook, ask them to complete that approval and then continue verification.

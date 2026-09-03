@@ -1,0 +1,35 @@
+Language Coach plugin installation guide for Codex
+
+This guide is for a Codex agent helping a user install Language Coach in the Codex desktop app.
+
+Language Coach reviews the language in each user message, gives a brief natural-language correction when useful, and then continues with the user's original task. It saves only language-learning notes.
+
+Complete these steps for the user instead of only describing them:
+
+1. Confirm that this task is running in the Codex desktop app on the user's local machine. A remote or web-only task cannot modify the desktop app's plugin directory. If this is not a local desktop task, stop and ask the user to open Codex desktop and paste the original installation prompt there.
+
+2. Locate the Codex CLI bundled with the desktop app. Use that executable for every command below. Do not substitute a standalone Codex CLI installed through npm, Homebrew, or another package manager.
+
+3. Add the Language Coach marketplace:
+
+   "<BUNDLED_CODEX>" plugin marketplace add https://github.com/jackeydou/codex-lang-coach.git --ref marketplace
+
+   The repository is private. If Git authentication fails, explain that the current GitHub account needs read access to jackeydou/codex-lang-coach, help the user authenticate Git, and retry.
+
+4. List marketplaces and use the exact marketplace name returned by Codex:
+
+   "<BUNDLED_CODEX>" plugin marketplace list
+
+5. Install the plugin from that marketplace:
+
+   "<BUNDLED_CODEX>" plugin add language-coach@<MARKETPLACE_NAME>
+
+6. Verify that Language Coach is installed and enabled:
+
+   "<BUNDLED_CODEX>" plugin list --marketplace <MARKETPLACE_NAME> --json
+
+   The Language Coach entry must report that it is installed and enabled. If Codex asks the user to review or trust plugin hooks, pause for that review and then continue verification.
+
+7. Plugin hooks and tools are loaded when a task starts. After verification succeeds, create and open a new task in the same project or workspace. In that new task, tell the user that Language Coach is ready and ask what they would like to work on.
+
+Do not claim setup is complete until installation and verification both succeed. If a step fails, diagnose it, retry safe recovery steps, and report the exact unfinished step.

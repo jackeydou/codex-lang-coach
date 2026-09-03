@@ -13,6 +13,12 @@ const MIME_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+const AGENT_GUIDES: Record<string, string> = {
+  "/codex": "codex.txt",
+  "/claude": "claude.txt",
+  "/cursor": "cursor.txt",
+};
+
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
   response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
   response.end(JSON.stringify(value));
@@ -40,6 +46,22 @@ export async function startDashboardServer(
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url || "/", "http://127.0.0.1");
+      const agentGuide = AGENT_GUIDES[url.pathname];
+      if (agentGuide && (request.method === "GET" || request.method === "HEAD")) {
+        const guidePath = join(staticRoot, "guides", agentGuide);
+        if (!existsSync(guidePath)) {
+          response.writeHead(503, { "content-type": "text/plain; charset=utf-8" });
+          response.end("Dashboard assets are missing. Run `pnpm build` from the monorepo root.");
+          return;
+        }
+        response.writeHead(200, {
+          "content-type": "text/plain; charset=utf-8",
+          "x-content-type-options": "nosniff",
+        });
+        if (request.method === "HEAD") response.end();
+        else createReadStream(guidePath).pipe(response);
+        return;
+      }
       if (url.pathname === "/api/config" && request.method === "GET") {
         sendJson(response, 200, {
           mode: "local",
