@@ -1,0 +1,19 @@
+{
+  "name": "language-coach",
+  "version": "0.2.0+cursor.20260903032301",
+  "description": "Turn everyday Cursor messages into private, reusable language-learning notes.",
+  "author": {
+    "name": "Language Coach contributors"
+  },
+  "license": "MIT",
+  "keywords": [
+    "language-learning",
+    "writing",
+    "coaching",
+    "reflection"
+  ],
+  "logo": "assets/logo.png",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./mcp.json"
+}
