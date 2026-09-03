@@ -16,8 +16,6 @@ Complete these steps:
 
    ~/.cursor/plugins/local/language-coach
 
-   The repository is private. If Git authentication fails, explain that the current GitHub account needs read access to jackeydou/codex-lang-coach and help the user authenticate Git before retrying.
-
 3. Verify that Cursor recognizes the plugin and that its sessionStart and stop hooks are enabled.
 
 4. Start a new Cursor agent session so the new hooks and MCP tools load.

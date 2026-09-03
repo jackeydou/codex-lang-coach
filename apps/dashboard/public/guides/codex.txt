@@ -14,8 +14,6 @@ Complete these steps for the user instead of only describing them:
 
    "<BUNDLED_CODEX>" plugin marketplace add https://github.com/jackeydou/codex-lang-coach.git --ref marketplace
 
-   The repository is private. If Git authentication fails, explain that the current GitHub account needs read access to jackeydou/codex-lang-coach, help the user authenticate Git, and retry.
-
 4. List marketplaces and use the exact marketplace name returned by Codex:
 
    "<BUNDLED_CODEX>" plugin marketplace list
