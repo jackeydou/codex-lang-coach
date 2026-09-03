@@ -5,9 +5,7 @@
       "description": "Save and review private language-learning notes, manage language settings, and open the local progress dashboard.",
       "cwd": ".",
       "command": "node",
-      "args": [
-        "./mcp/server.mjs"
-      ]
+      "args": ["./mcp/server.mjs"]
     }
   }
 }
