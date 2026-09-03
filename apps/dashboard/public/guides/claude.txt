@@ -14,8 +14,6 @@ Complete these steps for the user instead of only describing them:
 
    claude plugin marketplace add jackeydou/codex-lang-coach@marketplace-cc
 
-   The repository is private. If Git authentication fails, explain that the current GitHub account needs read access to jackeydou/codex-lang-coach, help the user authenticate Git, and retry.
-
 3. Install the plugin:
 
    claude plugin install language-coach@language-coach

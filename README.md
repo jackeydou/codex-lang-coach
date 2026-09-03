@@ -38,7 +38,6 @@ The project includes a Codex plugin, an MCP interface, a local Node.js runtime, 
 
 ![Add plugin marketplace dialog](./resources/add-codex-marketplace.png)
 
-Because this repository is private, Git must be authenticated as a GitHub account that can read it.
 Review and trust the plugin hooks after installation, then start a new Codex task so the plugin
 runtime is loaded.
 
