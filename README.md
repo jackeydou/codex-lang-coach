@@ -76,8 +76,7 @@ manifest. Add that repository and branch through Cursor's team marketplace or co
 `plugins/language-coach` into `~/.cursor/plugins/local/language-coach` for local testing.
 
 The Cursor build uses `.cursor-plugin/plugin.json`, `mcp.json`, and `hooks/hooks.json`. Its
-`sessionStart` hook injects the coaching instructions, while its `stop` hook performs the final
-learning-note check using Cursor's native hook protocol.
+`sessionStart` hook injects the coaching instructions, including when to save a learning note.
 
 ### Install from a release archive
 
@@ -348,7 +347,7 @@ The deployed site works at `https://language-coach.pluginsfoundry.dev`. The buil
 
 The default language pair is Chinese to English. The native language, target language, and coaching status can be changed from the dashboard or through the `update_language_profile` MCP tool.
 
-Disabling coaching stops prompt injection and note enforcement. Existing notes remain available until they are explicitly deleted.
+Disabling coaching stops prompt injection. Existing notes remain available until they are explicitly deleted.
 
 ## Plugin distribution
 
@@ -397,8 +396,7 @@ dist-cursor/language-coach/
 ├── mcp.json
 ├── hooks/
 │   ├── hooks.json
-│   ├── cursor-session-start.mjs
-│   └── cursor-stop.mjs
+│   └── cursor-session-start.mjs
 ├── skills/
 ├── mcp/server.mjs
 └── dashboard/dist/
@@ -455,7 +453,7 @@ The resulting plugin must:
 - pass Codex plugin validation and load hooks from `hooks/hooks.json`;
 - conform to the Agent Plugins 1.0.0 manifest and MCP schemas for the portable variant;
 - pass `claude plugin validate` for the Claude Code variant;
-- use Cursor's native `sessionStart` and `stop` hook protocols for the Cursor variant;
+- use Cursor's native `sessionStart` hook protocol for the Cursor variant;
 - starts its MCP server over stdio;
 - starts the dashboard and serves its API;
 - uses one shared database schema across hooks, MCP tools, and the dashboard;

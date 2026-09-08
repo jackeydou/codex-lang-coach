@@ -23,7 +23,7 @@ await cp(
 await cp(join(packaging, "mcp.json"), join(target, ".mcp.json"));
 await mkdir(join(target, "hooks"), { recursive: true });
 await cp(join(packaging, "hooks.json"), join(target, "hooks", "hooks.json"));
-for (const hook of ["user-prompt-submit.mjs", "stop.mjs"]) {
+for (const hook of ["user-prompt-submit.mjs"]) {
   await cp(join(root, "packages", "plugin", "dist", "hooks", hook), join(target, "hooks", hook));
 }
 await mkdir(join(target, "mcp"), { recursive: true });
@@ -52,7 +52,6 @@ const requiredFiles = [
   "assets/logo.png",
   "hooks/hooks.json",
   "hooks/user-prompt-submit.mjs",
-  "hooks/stop.mjs",
   "skills/language-coach/SKILL.md",
   "mcp/server.mjs",
   "dashboard/dist/index.html",
@@ -68,6 +67,7 @@ if (
   manifest.name !== "language-coach"
   || mcp.mcpServers?.languageCoach?.args?.[0] !== "${CLAUDE_PLUGIN_ROOT}/mcp/server.mjs"
   || !hooks.hooks?.UserPromptSubmit
+  || hooks.hooks?.Stop
 ) {
   throw new Error("The assembled Claude Code plugin is invalid.");
 }

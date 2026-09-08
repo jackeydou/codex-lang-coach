@@ -55,6 +55,26 @@ describe("SqliteLearningStore", () => {
     store.close();
   });
 
+  it("generates unique turn IDs for missing or blank IDs and supports retries with the returned ID", () => {
+    const store = createStore();
+    const input = {
+      inputLanguage: "target" as const,
+      originalExpression: "An original expression",
+      polishedExpression: "A polished expression",
+      corrections: [],
+      patterns: [],
+      examples: [],
+    };
+    const notes = [undefined, "", " ", ""].map((turnId) => store.saveNote({ ...input, turnId }));
+    for (const note of notes) {
+      expect(note.turnId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      expect(store.saveNote({ ...input, turnId: note.turnId }).id).toBe(note.id);
+    }
+    expect(new Set(notes.map((note) => note.turnId)).size).toBe(4);
+    expect(store.listNotes()).toHaveLength(4);
+    store.close();
+  });
+
   it("reports native, target, mixed, and other usage separately", () => {
     const store = createStore();
     for (const [index, inputLanguage] of ["native", "target", "target", "mixed", "other"].entries()) {

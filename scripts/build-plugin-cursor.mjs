@@ -20,7 +20,7 @@ await cp(join(packaging, "plugin.json"), join(target, ".cursor-plugin", "plugin.
 await cp(join(packaging, "mcp.json"), join(target, "mcp.json"));
 await mkdir(join(target, "hooks"), { recursive: true });
 await cp(join(packaging, "hooks.json"), join(target, "hooks", "hooks.json"));
-for (const hook of ["cursor-session-start.mjs", "cursor-stop.mjs"]) {
+for (const hook of ["cursor-session-start.mjs"]) {
   await cp(join(root, "packages", "plugin", "dist", "hooks", hook), join(target, "hooks", hook));
 }
 await mkdir(join(target, "mcp"), { recursive: true });
@@ -37,7 +37,7 @@ await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
 for (const relativePath of [
   ".cursor-plugin/plugin.json", "mcp.json", "assets/icon.png", "assets/logo.png",
-  "hooks/hooks.json", "hooks/cursor-session-start.mjs", "hooks/cursor-stop.mjs",
+  "hooks/hooks.json", "hooks/cursor-session-start.mjs",
   "skills/language-coach/SKILL.md", "mcp/server.mjs", "dashboard/dist/index.html",
 ]) {
   await readFile(join(target, relativePath));
@@ -51,7 +51,7 @@ if (
   || manifest.mcpServers !== "./mcp.json"
   || mcp.mcpServers?.languageCoach?.args?.[0] !== "${CURSOR_PLUGIN_ROOT}/mcp/server.mjs"
   || !hooks.hooks?.sessionStart
-  || !hooks.hooks?.stop
+  || hooks.hooks?.stop
 ) {
   throw new Error("The assembled Cursor plugin is invalid.");
 }

@@ -239,8 +239,10 @@ export class SqliteLearningStore implements LearningStore {
 
   saveNote(input: LearningNoteInput): LearningNote {
     const profile = this.getProfile();
+    const turnId = input.turnId?.trim() || randomUUID();
     const note: LearningNote = {
       ...input,
+      turnId,
       id: randomUUID(),
       inputLanguage: input.inputLanguage || "other",
       originalExpression: input.originalExpression.trim(),
@@ -253,9 +255,7 @@ export class SqliteLearningStore implements LearningStore {
       throw new Error("Both originalExpression and polishedExpression are required.");
     }
 
-    const existing = input.turnId
-      ? (this.database.prepare("SELECT id FROM learning_notes WHERE turn_id = ?").get(input.turnId) as { id: string } | undefined)
-      : undefined;
+    const existing = this.database.prepare("SELECT id FROM learning_notes WHERE turn_id = ?").get(turnId) as { id: string } | undefined;
     if (existing) {
       const row = this.database.prepare("SELECT * FROM learning_notes WHERE id = ?").get(existing.id) as NoteRow;
       return mapNote(row);

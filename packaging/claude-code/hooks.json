@@ -11,18 +11,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/stop.mjs\"",
-            "statusMessage": "Saving your language note",
-            "timeout": 15
-          }
-        ]
-      }
     ]
   }
 }
