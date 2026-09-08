@@ -20,7 +20,7 @@ await cp(join(packaging, "plugin.json"), join(target, ".codex-plugin", "plugin.j
 await cp(join(packaging, "mcp.json"), join(target, ".mcp.json"));
 await mkdir(join(target, "hooks"), { recursive: true });
 await cp(join(packaging, "hooks.json"), join(target, "hooks", "hooks.json"));
-for (const hook of ["user-prompt-submit.mjs", "stop.mjs"]) {
+for (const hook of ["user-prompt-submit.mjs"]) {
   await cp(join(root, "packages", "plugin", "dist", "hooks", hook), join(target, "hooks", hook));
 }
 await mkdir(join(target, "mcp"), { recursive: true });
@@ -37,7 +37,7 @@ await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
 for (const relativePath of [
   ".codex-plugin/plugin.json", ".mcp.json", "assets/icon.png", "assets/logo.png",
-  "hooks/hooks.json", "hooks/user-prompt-submit.mjs", "hooks/stop.mjs",
+  "hooks/hooks.json", "hooks/user-prompt-submit.mjs",
   "skills/language-coach/SKILL.md", "mcp/server.mjs", "dashboard/dist/index.html",
 ]) {
   await readFile(join(target, relativePath));
@@ -50,7 +50,7 @@ if (
   || manifest.mcpServers !== "./.mcp.json"
   || mcp.mcpServers?.languageCoach?.args?.[0] !== "./mcp/server.mjs"
   || !hooks.hooks?.UserPromptSubmit
-  || !hooks.hooks?.Stop
+  || hooks.hooks?.Stop
 ) {
   throw new Error("The assembled Codex plugin is invalid.");
 }
