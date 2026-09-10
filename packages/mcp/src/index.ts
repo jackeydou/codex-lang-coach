@@ -43,7 +43,7 @@ export function createLanguageCoachMcpServer({
   startDashboard,
   remoteSync,
 }: LanguageCoachMcpOptions): McpServer {
-  const server = new McpServer({ name: "language-coach", version: "0.2.1" });
+  const server = new McpServer({ name: "language-coach", version: "0.2.2" });
 
   server.registerTool("get_language_profile", {
     title: "Get language profile",
