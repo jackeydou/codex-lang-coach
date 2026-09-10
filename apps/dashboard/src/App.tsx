@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from "react"
 import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, LearningNote, SyncStatus } from "@language-coach/core"
 import { ActivityIcon, ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, BookOpenCheckIcon, CheckIcon, CloudIcon, FlameIcon, HomeIcon, LaptopIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
-import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from "react-router-dom"
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 
 import { AuthPage } from "@/AuthPage"
 import { initializeAuth, readAuthSession, type AuthClient, type AuthUser } from "@/auth-client"
@@ -19,7 +19,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupConte
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { createDashboardApi, type DashboardApi, UnauthorizedError } from "@/dashboard-api"
+import { createDashboardApi, type DashboardApi, loadDashboardRuntime, UnauthorizedError } from "@/dashboard-api"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 function LoadingDashboard() {
@@ -470,10 +470,16 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
 
         {sync?.error && <p className="sync-error" role="alert">{sync.error}</p>}
 
-        {user && (
+        {user ? (
           <div className="sync-account-row">
             <span>Account: <strong>{user.email}</strong></span>
             <Button variant="outline" size="sm" onClick={() => void onSignOut()}><LogInIcon /> Sign out</Button>
+          </div>
+        ) : mode === "local" && (
+          <div className="sync-account-row">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/sign-in?returnTo=%2Fdashboard%2Fsettings"><LogInIcon /> Sign in</Link>
+            </Button>
           </div>
         )}
       </CardContent>
@@ -671,6 +677,8 @@ function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncTo
 
 export function DashboardApp() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+  const settingsPage = pathname === "/dashboard/settings" || pathname.startsWith("/dashboard/settings/")
   const [data, setData] = useState<DashboardData>()
   const [runtime, setRuntime] = useState<DashboardRuntimeConfig>()
   const [auth, setAuth] = useState<AuthClient>()
@@ -724,7 +732,7 @@ export function DashboardApp() {
   }, [])
 
   useEffect(() => {
-    if (runtime?.mode !== "local" || !data?.sync?.enabled || auth) return
+    if (runtime?.mode !== "local" || (!settingsPage && !data?.sync?.enabled) || auth) return
     let active = true
 
     void (async () => {
@@ -745,7 +753,7 @@ export function DashboardApp() {
     })()
 
     return () => { active = false }
-  }, [auth, data?.sync?.enabled, runtime?.mode])
+  }, [auth, data?.sync?.enabled, runtime?.mode, settingsPage])
 
   useEffect(() => {
     if (!api || data?.sync?.state !== "syncing") return
@@ -857,9 +865,8 @@ export function DashboardApp() {
     )
   }
 
-  const settingsPage = window.location.pathname === "/dashboard/settings" || window.location.pathname.startsWith("/dashboard/settings/")
-  const myNotesPage = window.location.pathname === "/dashboard/notes" || window.location.pathname.startsWith("/dashboard/notes/")
-  const insightsPage = window.location.pathname === "/dashboard/insights" || window.location.pathname.startsWith("/dashboard/insights/")
+  const myNotesPage = pathname === "/dashboard/notes" || pathname.startsWith("/dashboard/notes/")
+  const insightsPage = pathname === "/dashboard/insights" || pathname.startsWith("/dashboard/insights/")
 
   return (
     <TooltipProvider>
@@ -875,11 +882,27 @@ export function DashboardApp() {
   )
 }
 
+function HomePage() {
+  const [mode, setMode] = useState<DashboardRuntimeConfig["mode"]>()
+
+  useEffect(() => {
+    let active = true
+    void loadDashboardRuntime().then(
+      (runtime) => { if (active) setMode(runtime.mode) },
+      () => { if (active) setMode("remote") },
+    )
+    return () => { active = false }
+  }, [])
+
+  if (!mode) return <LoadingDashboard />
+  return mode === "local" ? <Navigate to="/dashboard" replace /> : <LandingPage />
+}
+
 export function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<HomePage />} />
         <Route path="/sign-in" element={<AuthPage mode="sign-in" />} />
         <Route path="/sign-up" element={<AuthPage mode="sign-up" />} />
         <Route path="/privacy-policy" element={<LegalPage kind="privacy" />} />

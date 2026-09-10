@@ -46,6 +46,11 @@ export async function startDashboardServer(
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url || "/", "http://127.0.0.1");
+      if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
+        response.writeHead(302, { location: `/dashboard${url.search}`, "cache-control": "no-store" });
+        response.end();
+        return;
+      }
       const agentGuide = AGENT_GUIDES[url.pathname];
       if (agentGuide && (request.method === "GET" || request.method === "HEAD")) {
         const guidePath = join(staticRoot, "guides", agentGuide);
@@ -160,5 +165,5 @@ export async function startDashboardServer(
     tryListen();
   });
 
-  return { server, port, url: `http://localhost:${port}` };
+  return { server, port, url: `http://localhost:${port}/dashboard` };
 }

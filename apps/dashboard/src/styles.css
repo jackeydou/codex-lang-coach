@@ -460,6 +460,10 @@
   padding-bottom: clamp(0.5rem, 2vw, 1.5rem);
 }
 
+.settings-page > * {
+  flex-shrink: 0;
+}
+
 .settings-intro h1 { font-size: clamp(2rem, 4vw, 3.15rem); }
 
 .settings-page [data-slot="card"] {
