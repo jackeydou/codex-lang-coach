@@ -1,6 +1,6 @@
 {
   "name": "language-coach",
-  "version": "0.2.1+claude-code.20260908211137",
+  "version": "0.2.2+claude-code.20260910211521",
   "description": "Turn everyday Claude Code messages into private, reusable language-learning notes.",
   "author": {
     "name": "Language Coach contributors"
