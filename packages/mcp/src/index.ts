@@ -52,7 +52,7 @@ export function createLanguageCoachMcpServer({
   dashboardIcon,
 }: LanguageCoachMcpOptions): McpServer {
   const server = new McpServer({
-    name: "language-coach", version: "0.2.2",
+    name: "language-coach", version: "0.2.3",
     icons: dashboardIcon ? [{ src: dashboardIcon, mimeType: "image/png", theme: "light" }] : undefined,
   });
 
