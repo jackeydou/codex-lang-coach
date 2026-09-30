@@ -4,6 +4,7 @@ dist-agent/
 dist-cc/
 dist-cursor/
 apps/*/dist/
+apps/*/dist-mcp/
 packages/*/dist/
 .DS_Store
 *.sqlite
@@ -21,3 +22,5 @@ mise.*.local.toml
 .wrangler/
 .neon/
 .pnpm-store/
+
+.dev/

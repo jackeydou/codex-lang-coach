@@ -2,6 +2,12 @@ import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, RemoteSync
 
 type ProfileUpdate = Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">
 
+export interface LearningDashboardClient {
+  getDashboard(cursor?: string): Promise<DashboardData>
+  updateProfile(profile: ProfileUpdate): Promise<LanguageProfile>
+  deleteNote(id: string): Promise<{ deleted: boolean }>
+}
+
 export class UnauthorizedError extends Error {
   constructor() {
     super("Authentication required.")

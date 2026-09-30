@@ -5,7 +5,7 @@
 
 @font-face {
   font-family: "Signifier";
-  src: url("/fonts/signifier-regular.woff2") format("woff2");
+  src: url("../public/fonts/signifier-regular.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;

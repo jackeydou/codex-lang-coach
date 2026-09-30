@@ -12,11 +12,15 @@ export function NoteFlashcard({ note, onDelete }: {
   onDelete: (id: string) => Promise<void>
 }) {
   const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState("")
 
   async function deleteNote() {
     setDeleting(true)
+    setDeleteError("")
     try {
       await onDelete(note.id)
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "The note could not be deleted.")
     } finally {
       setDeleting(false)
     }
@@ -24,6 +28,7 @@ export function NoteFlashcard({ note, onDelete }: {
 
   return (
     <Card className="flashcard" data-revealed="true">
+      {deleteError && <p role="alert" className="p-4 text-destructive">{deleteError}</p>}
       <div className="flashcard-delete-action">
         <AlertDialog>
           <AlertDialogTrigger asChild><Button variant="ghost" size="icon" aria-label="Delete this note"><Trash2Icon /></Button></AlertDialogTrigger>

@@ -1,0 +1,52 @@
+import type { App } from "@modelcontextprotocol/ext-apps"
+import type { DashboardData, LanguageProfile } from "@language-coach/core"
+import type { LearningDashboardClient } from "../dashboard-api"
+
+type ToolBridge = Pick<App, "callServerTool" | "openLink">
+
+export class McpDashboardClient implements LearningDashboardClient {
+  constructor(private readonly bridge: ToolBridge) {}
+
+  private async call(name: string, args: Record<string, unknown> = {}) {
+    const result = await this.bridge.callServerTool({ name, arguments: args }, { timeout: 15_000 })
+    if (result.isError) {
+      const message = result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n")
+      throw new Error(message || `${name} failed.`)
+    }
+    if (!result.structuredContent) throw new Error(`${name} returned no structured data.`)
+    return result.structuredContent
+  }
+
+  async getDashboard(cursor?: string): Promise<DashboardData> {
+    const data = await this.call("get_learning_dashboard_data", { limit: 50, ...(cursor ? { cursor } : {}) })
+    if (!data.profile || !Array.isArray(data.notes) || !data.progress || !data.notesPage) {
+      throw new Error("The dashboard returned an invalid snapshot.")
+    }
+    return data as unknown as DashboardData
+  }
+
+  async updateProfile(profile: Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">): Promise<LanguageProfile> {
+    const updated = await this.call("update_language_profile", profile)
+    if (typeof updated.nativeLanguage !== "string" || typeof updated.targetLanguage !== "string" || typeof updated.coachEnabled !== "boolean") {
+      throw new Error("The server returned an invalid language profile.")
+    }
+    return updated as unknown as LanguageProfile
+  }
+
+  async deleteNote(id: string): Promise<{ deleted: boolean }> {
+    const result = await this.call("delete_learning_note", { id })
+    if (typeof result.deleted !== "boolean") throw new Error("The server returned an invalid deletion result.")
+    return { deleted: result.deleted }
+  }
+
+  async openStandalone(): Promise<void> {
+    const { url } = await this.call("start_learning_dashboard")
+    if (typeof url !== "string") throw new Error("The web dashboard returned no URL.")
+    const parsed = new URL(url)
+    if (parsed.protocol !== "http:" || !["localhost", "127.0.0.1"].includes(parsed.hostname)) {
+      throw new Error("The web dashboard returned an unexpected address.")
+    }
+    const result = await this.bridge.openLink({ url })
+    if (result.isError) throw new Error("The host could not open the web dashboard.")
+  }
+}

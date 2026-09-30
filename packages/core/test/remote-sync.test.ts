@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -163,4 +163,23 @@ describe("RemoteLearningSync", () => {
     expect(restartedSync.status.lastSyncedAt).toBeDefined();
     store.close();
   });
+});
+
+it("isolated development ignores saved credentials and refuses remote sync", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "coach-dev-test-"));
+  temporaryDirectories.push(directory);
+  const store = new SqliteLearningStore(join(directory, "dev.sqlite"));
+  const configPath = join(directory, "credentials.json");
+  const config = { remoteUrl: "https://production.invalid", token: "x".repeat(40), userId: "production", deviceId: "device", deviceName: "test" };
+  writeFileSync(configPath, JSON.stringify(config));
+  const sync = new RemoteLearningSync(store, { LANGUAGE_COACH_DEV_ISOLATED: "1", LANGUAGE_COACH_SYNC_CONFIG_PATH: configPath });
+  const fetchSpy = vi.spyOn(globalThis, "fetch");
+  try {
+    expect(sync.status.enabled).toBe(false);
+    expect(sync.config).toBeUndefined();
+    expect(sync.remoteUrl).toBe("http://127.0.0.1:43128");
+    expect(() => sync.configure(config)).toThrow("disabled");
+    await expect(sync.sync()).rejects.toThrow("not enabled");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  } finally { store.close(); }
 });
