@@ -41,6 +41,29 @@ The project includes a Codex plugin, an MCP interface, a local Node.js runtime, 
 Review and trust the plugin hooks after installation, then start a new Codex task so the plugin
 runtime is loaded.
 
+The Codex plugin requires Node.js 22.5 or newer with `node:sqlite`. The macOS/Linux
+package uses `/bin/sh` to launch a bundled runtime resolver for both MCP and hooks.
+It checks PATH, Homebrew/system locations, Volta, mise, nvm, and fnm installations
+and verifies Node compatibility before starting the plugin. A custom runtime can
+be selected with the `LANGUAGE_COACH_NODE` environment variable. This launcher
+requires a POSIX shell and does not support native Windows hosts.
+
+On macOS, desktop apps may not inherit the PATH configured by mise, nvm, or your shell.
+If installation succeeds but Language Coach is missing from the sidebar, check
+the Codex logs for an MCP startup error. `No such file or directory (os error 2)`
+can mean the host cannot find the configured `node` command.
+
+For an older installed package that still uses a bare `node` command, run:
+
+```bash
+node scripts/repair-codex-runtime.mjs <installed-plugin-root>
+```
+
+Use the version directory under `~/.codex/plugins/cache/language-coach/language-coach/`
+as the plugin root. The repair backs up the MCP and hook configuration and pins
+both to the current Node executable. Reload the plugin afterward. Reinstalling or
+upgrading the plugin replaces this local repair; rerun it if needed.
+
 ### Install from the CLI
 
 Add the generated `marketplace` branch, then install the plugin:

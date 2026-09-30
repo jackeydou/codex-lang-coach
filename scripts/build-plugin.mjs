@@ -25,6 +25,7 @@ await cp(join(packaging, "hooks.json"), join(target, "hooks", "hooks.json"));
 for (const hook of ["user-prompt-submit.mjs"]) {
   await cp(join(root, "packages", "plugin", "dist", "hooks", hook), join(target, "hooks", hook));
 }
+await cp(join(packaging, "runtime"), join(target, "runtime"), { recursive: true });
 await mkdir(join(target, "mcp"), { recursive: true });
 await cp(join(root, "apps", "server", "dist", "server.mjs"), join(target, "mcp", "server.mjs"));
 await mkdir(join(target, "dashboard"), { recursive: true });
@@ -56,6 +57,7 @@ const requiredFiles = [
   "hooks/user-prompt-submit.mjs",
   "skills/language-coach/SKILL.md",
   "mcp/server.mjs",
+  "runtime/run-node.sh",
   "dashboard/dist/index.html",
   "ui/dashboard.html",
 ];
@@ -69,7 +71,9 @@ const hooks = JSON.parse(await readFile(join(target, "hooks", "hooks.json"), "ut
 if (
   manifest.name !== "language-coach"
   || manifest.mcpServers !== "./.mcp.json"
-  || mcp.mcpServers?.languageCoach?.args?.[0] !== "./mcp/server.mjs"
+  || mcp.mcpServers?.languageCoach?.command !== "/bin/sh"
+  || mcp.mcpServers?.languageCoach?.args?.[0] !== "./runtime/run-node.sh"
+  || mcp.mcpServers?.languageCoach?.args?.[1] !== "./mcp/server.mjs"
   || !hooks.hooks?.UserPromptSubmit
   || hooks.hooks?.Stop
 ) {

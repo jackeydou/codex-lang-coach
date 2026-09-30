@@ -4,8 +4,11 @@
       "title": "Language Coach",
       "description": "Save and review private language-learning notes, manage language settings, and open the local progress dashboard.",
       "cwd": ".",
-      "command": "node",
-      "args": ["./mcp/server.mjs"]
+      "command": "/bin/sh",
+      "args": [
+        "./runtime/run-node.sh",
+        "./mcp/server.mjs"
+      ]
     }
   }
 }
