@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/hooks/user-prompt-submit.mjs\"",
+            "command": "/bin/sh \"${PLUGIN_ROOT}/runtime/run-node.sh\" \"${PLUGIN_ROOT}/hooks/user-prompt-submit.mjs\"",
             "statusMessage": "Loading your language coach"
           }
         ]
