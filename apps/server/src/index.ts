@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { RemoteLearningSync, SqliteLearningStore } from "@language-coach/core";
 import { createLanguageCoachMcpServer } from "@language-coach/mcp";
@@ -34,7 +35,9 @@ if (process.argv.includes("--dashboard")) {
   const server = createLanguageCoachMcpServer({
     store, startDashboard: ensureDashboard, remoteSync,
     dashboardIcon,
-    readDashboardHtml: () => readFile(new URL("../ui/dashboard.html", import.meta.url), "utf8"),
+    readDashboardHtml: existsSync(new URL("../ui/dashboard.html", import.meta.url))
+      ? () => readFile(new URL("../ui/dashboard.html", import.meta.url), "utf8")
+      : undefined,
   });
   if (remoteSync.status.enabled) void remoteSync.sync().catch((error) => {
     process.stderr.write(`Language Coach remote sync failed: ${error instanceof Error ? error.message : String(error)}\n`);

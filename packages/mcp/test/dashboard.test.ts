@@ -10,14 +10,14 @@ import { createLanguageCoachMcpServer, DASHBOARD_RESOURCE_URI } from "../src/ind
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0)) await close(); });
 
-async function fixture() {
+async function fixture(withEmbeddedUi = true) {
   const directory = mkdtempSync(join(tmpdir(), "language-coach-mcp-"));
   const store = new SqliteLearningStore(join(directory, "test.sqlite"));
   const sync = new RemoteLearningSync(store, { LANGUAGE_COACH_SYNC_CONFIG_PATH: join(directory, "sync.json") });
   const server = createLanguageCoachMcpServer({
     store, remoteSync: sync,
     startDashboard: async () => ({ url: "http://127.0.0.1:43127", port: 43127 }),
-    readDashboardHtml: async () => "<!doctype html><title>Language Coach</title>",
+    readDashboardHtml: withEmbeddedUi ? async () => "<!doctype html><title>Language Coach</title>" : undefined,
   });
   const client = new Client({ name: "dashboard-test", version: "1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -60,4 +60,14 @@ it("pages authoritative snapshots and reflects profile changes and note deletion
   expect(updated.structuredContent).toMatchObject({ profile: { targetLanguage: "French" }, progress: { totalNotes: 2 }, sync: { enabled: false } });
   expect(JSON.stringify(updated.structuredContent)).not.toContain("token");
   expect((await client.callTool({ name: "get_learning_dashboard_data", arguments: { limit: 101 } })).isError).toBe(true);
+});
+
+it("omits embedded UI for packages without HTML while preserving the web dashboard", async () => {
+  const { client } = await fixture(false);
+  const { tools } = await client.listTools();
+  expect(tools.map((tool) => tool.name)).not.toContain("open_learning_dashboard");
+  expect(tools.map((tool) => tool.name)).not.toContain("get_learning_dashboard_data");
+  expect(client.getServerCapabilities()?.resources).toBeUndefined();
+  const fallback = await client.callTool({ name: "start_learning_dashboard", arguments: {} });
+  expect(fallback.structuredContent).toMatchObject({ url: "http://127.0.0.1:43127" });
 });
