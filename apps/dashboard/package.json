@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.mcp.config.ts",
     "check": "tsc -p tsconfig.json --noEmit",
     "dev": "node scripts/dev.mjs",
     "test": "vitest run --passWithNoTests"
@@ -12,6 +12,7 @@
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
     "@language-coach/core": "workspace:*",
+    "@modelcontextprotocol/ext-apps": "1.7.5",
     "@neondatabase/neon-js": "0.7.0-beta",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -30,6 +31,7 @@
     "@types/node": "^26.2.0",
     "@vitejs/plugin-react": "^5.0.0",
     "tailwindcss": "^4.3.3",
-    "vite": "^7.0.0"
+    "vite": "^7.0.0",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }

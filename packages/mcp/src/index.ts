@@ -1,4 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
+import type { OpenAIUiResourceMetadata, OpenAIUiToolMetadata } from "@openai/mcp-extensions/server";
 import {
   CORRECTION_CATEGORIES,
   EXAMPLE_CONTEXTS,
@@ -12,7 +14,11 @@ export interface LanguageCoachMcpOptions {
   store: LearningStore;
   startDashboard: () => Promise<{ url: string; port: number }>;
   remoteSync: RemoteLearningSync;
+  readDashboardHtml: () => Promise<string>;
+  dashboardIcon?: string;
 }
+
+export const DASHBOARD_RESOURCE_URI = "ui://language-coach/dashboard/v1.html";
 
 const correctionSchema = z.object({
   original: z.string().min(1),
@@ -42,8 +48,55 @@ export function createLanguageCoachMcpServer({
   store,
   startDashboard,
   remoteSync,
+  readDashboardHtml,
+  dashboardIcon,
 }: LanguageCoachMcpOptions): McpServer {
-  const server = new McpServer({ name: "language-coach", version: "0.2.2" });
+  const server = new McpServer({
+    name: "language-coach", version: "0.2.2",
+    icons: dashboardIcon ? [{ src: dashboardIcon, mimeType: "image/png", theme: "light" }] : undefined,
+  });
+
+  registerAppResource(server, "Language Coach dashboard", DASHBOARD_RESOURCE_URI, {}, async () => ({
+    contents: [{
+      uri: DASHBOARD_RESOURCE_URI,
+      mimeType: RESOURCE_MIME_TYPE,
+      text: await readDashboardHtml(),
+      _meta: {
+        ui: { csp: { connectDomains: [], resourceDomains: [] } },
+        "openai/ui": {
+          preferredDisplayMode: "fullscreen",
+          availableDisplayModes: ["inline", "fullscreen"],
+        } satisfies OpenAIUiResourceMetadata,
+      },
+    }],
+  }));
+
+  registerAppTool(server, "open_learning_dashboard", {
+    title: process.env.LANGUAGE_COACH_DEV_ISOLATED === "1" ? "Language Coach Dev" : "Language Coach",
+    description: "Open the Language Coach dashboard in the host to review learning notes, activity, and language settings. Use start_learning_dashboard for a standalone web dashboard.",
+    inputSchema: {},
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: {
+      ui: { resourceUri: DASHBOARD_RESOURCE_URI, visibility: ["model", "app"] },
+      "openai/ui": {
+        entrypoints: [{ type: "global" }, { type: "thread" }],
+      } satisfies OpenAIUiToolMetadata,
+    },
+  }, async () => result({ profile: store.getProfile(), totalNotes: store.getProgress().totalNotes }, "Language Coach dashboard is ready."));
+
+  server.registerTool("get_learning_dashboard_data", {
+    title: "Get learning dashboard data",
+    description: "Read a page of local learning notes, language settings, progress, and sync status for the dashboard.",
+    inputSchema: {
+      limit: z.number().int().min(1).max(100).default(50),
+      cursor: z.string().optional(),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+    _meta: { ui: { visibility: ["app"] } },
+  }, async ({ limit, cursor }) => {
+    const { enabled, state, lastSyncedAt, completedItems, totalItems } = remoteSync.status;
+    return result({ ...store.getDashboardData(limit, cursor), sync: { enabled, state, lastSyncedAt, completedItems, totalItems } });
+  });
 
   server.registerTool("get_language_profile", {
     title: "Get language profile",

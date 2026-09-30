@@ -54,6 +54,7 @@ function readConfig(path: string): RemoteSyncConfig | undefined {
 
 export class RemoteLearningSync {
   private readonly configPath: string;
+  private readonly isolatedDevelopment: boolean;
   private activeSync?: Promise<SyncUploadResult>;
   private syncRequested = false;
   private lastSyncedAt?: string;
@@ -64,13 +65,16 @@ export class RemoteLearningSync {
 
   constructor(private readonly store: LearningStore, env: NodeJS.ProcessEnv = process.env) {
     this.configPath = resolveRemoteSyncConfigPath(env);
+    this.isolatedDevelopment = env.LANGUAGE_COACH_DEV_ISOLATED === "1";
   }
 
   get remoteUrl(): string {
+    if (this.isolatedDevelopment) return "http://127.0.0.1:43128";
     return readConfig(this.configPath)?.remoteUrl || process.env.LANGUAGE_COACH_REMOTE_URL || DEFAULT_REMOTE_URL;
   }
 
   get config(): RemoteSyncConfig | undefined {
+    if (this.isolatedDevelopment) return undefined;
     return readConfig(this.configPath);
   }
 
@@ -92,6 +96,7 @@ export class RemoteLearningSync {
   }
 
   configure(config: RemoteSyncConfig): void {
+    if (this.isolatedDevelopment) throw new Error("Remote sync is disabled in the isolated development plugin.");
     const existing = this.config;
     if (existing?.userId && existing.userId !== config.userId) {
       throw new Error("This local database is already linked to another account. Disable sync before linking a different account.");

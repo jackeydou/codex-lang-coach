@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent
 import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, LearningNote, SyncStatus } from "@language-coach/core"
 import { ActivityIcon, ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, BookOpenCheckIcon, CheckIcon, CloudIcon, FlameIcon, HomeIcon, LaptopIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
+import coachIcon from "../public/assets/language-coach-icon.png"
 
 import { AuthPage } from "@/AuthPage"
 import { initializeAuth, readAuthSession, type AuthClient, type AuthUser } from "@/auth-client"
@@ -19,7 +20,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupConte
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { createDashboardApi, type DashboardApi, loadDashboardRuntime, UnauthorizedError } from "@/dashboard-api"
+import { createDashboardApi, type DashboardApi, type LearningDashboardClient, loadDashboardRuntime, UnauthorizedError } from "@/dashboard-api"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 function LoadingDashboard() {
@@ -348,8 +349,12 @@ function SettingsCard({ profile, saving, onSave }: {
   async function submit(event: FormEvent) {
     event.preventDefault()
     setMessage("")
-    await onSave({ nativeLanguage, targetLanguage, coachEnabled })
-    setMessage("Settings saved.")
+    try {
+      await onSave({ nativeLanguage, targetLanguage, coachEnabled })
+      setMessage("Settings saved.")
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Settings could not be saved.")
+    }
   }
 
   return (
@@ -533,7 +538,7 @@ function DashboardShell({ settingsPage, myNotesPage, insightsPage, user, childre
         <SidebarHeader className="dashboard-sidebar-header">
           <div className="dashboard-sidebar-brand">
             <div className="dashboard-sidebar-identity" aria-label="Language Coach">
-              <img src="/assets/language-coach-icon.png" alt="" />
+              <img src={coachIcon} alt="" />
               <span>Language Coach</span>
             </div>
             <SidebarTrigger />
@@ -615,7 +620,7 @@ function InsightsPage({ data }: { data: DashboardData }) {
   )
 }
 
-function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncToggle, onSignOut }: {
+function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncToggle, onSignOut, openStandalone }: {
   data: DashboardData
   saving: boolean
   onSave: (profile: Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">) => Promise<void>
@@ -624,6 +629,7 @@ function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncTo
   syncChanging: boolean
   onSyncToggle: (enabled: boolean) => Promise<void>
   onSignOut: () => Promise<void>
+  openStandalone?: () => Promise<void>
 }) {
   const topCategory = data.progress.categoryCounts[0]
 
@@ -669,18 +675,23 @@ function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncTo
           </Card>
         </section>
 
-        <AccountSyncCard mode={mode} sync={data.sync} user={user} changing={syncChanging} onToggle={onSyncToggle} onSignOut={onSignOut} />
+        {openStandalone ? (
+          <Card className="settings-editorial-card">
+            <CardHeader><CardTitle>Login &amp; sync</CardTitle><CardDescription>{data.sync?.enabled ? "Cloud upload is on." : "Your notes are stored on this computer."} Manage your account in the web dashboard.</CardDescription></CardHeader>
+            <CardContent><Button variant="outline" onClick={() => void onSyncToggle(Boolean(data.sync?.enabled))}>Open web dashboard</Button></CardContent>
+          </Card>
+        ) : <AccountSyncCard mode={mode} sync={data.sync} user={user} changing={syncChanging} onToggle={onSyncToggle} onSignOut={onSignOut} />}
         <SettingsCard profile={data.profile} saving={saving} onSave={onSave} />
       </div>
   )
 }
 
-export function DashboardApp() {
+export function DashboardApp({ embedded }: { embedded?: { client: LearningDashboardClient; openStandalone: () => Promise<void> } }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const settingsPage = pathname === "/dashboard/settings" || pathname.startsWith("/dashboard/settings/")
   const [data, setData] = useState<DashboardData>()
-  const [runtime, setRuntime] = useState<DashboardRuntimeConfig>()
+  const [runtime, setRuntime] = useState<DashboardRuntimeConfig | undefined>(embedded ? { mode: "local", remoteUrl: "" } : undefined)
   const [auth, setAuth] = useState<AuthClient>()
   const [user, setUser] = useState<AuthUser>()
   const [accessToken, setAccessToken] = useState("")
@@ -689,7 +700,8 @@ export function DashboardApp() {
   const [syncChanging, setSyncChanging] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [authRequired, setAuthRequired] = useState(false)
-  const api = useMemo(() => runtime ? createDashboardApi(runtime, accessToken || undefined) : undefined, [accessToken, runtime])
+  const webApi = useMemo(() => !embedded && runtime ? createDashboardApi(runtime, accessToken || undefined) : undefined, [accessToken, runtime, embedded])
+  const api: LearningDashboardClient | undefined = embedded?.client || webApi
 
   async function load(client = api) {
     if (!client) return
@@ -707,6 +719,7 @@ export function DashboardApp() {
   }
 
   useEffect(() => {
+    if (embedded) { void load(embedded.client); return }
     void (async () => {
       try {
         const { runtime: nextRuntime, auth: nextAuth } = await initializeAuth()
@@ -729,10 +742,23 @@ export function DashboardApp() {
         setError(initializeError instanceof Error ? initializeError.message : "The dashboard could not be initialized.")
       }
     })()
-  }, [])
+  }, [embedded])
 
   useEffect(() => {
-    if (runtime?.mode !== "local" || (!settingsPage && !data?.sync?.enabled) || auth) return
+    if (!embedded) return
+    const refresh = () => { if (document.visibilityState === "visible") void load(embedded.client) }
+    const timer = window.setInterval(refresh, 15_000)
+    window.addEventListener("focus", refresh)
+    document.addEventListener("visibilitychange", refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener("focus", refresh)
+      document.removeEventListener("visibilitychange", refresh)
+    }
+  }, [embedded])
+
+  useEffect(() => {
+    if (embedded || runtime?.mode !== "local" || (!settingsPage && !data?.sync?.enabled) || auth) return
     let active = true
 
     void (async () => {
@@ -791,7 +817,12 @@ export function DashboardApp() {
   }
 
   async function toggleSync(enabled: boolean) {
-    if (!api) return
+    if (embedded) {
+      try { await embedded.openStandalone() }
+      catch (error) { setError(error instanceof Error ? error.message : "The web dashboard could not be opened.") }
+      return
+    }
+    if (!webApi) return
     if (!auth || !accessToken || !user) {
       const intent = enabled ? "sync" : "disable"
       navigate(`/sign-in?intent=${intent}&returnTo=${encodeURIComponent("/dashboard/settings")}`)
@@ -799,8 +830,8 @@ export function DashboardApp() {
     }
     setSyncChanging(true)
     try {
-      if (enabled) await enableSync(api, accessToken, user)
-      else await disableSync(api, accessToken)
+      if (enabled) await enableSync(webApi, accessToken, user)
+      else await disableSync(webApi, accessToken)
     } catch (actionError) {
       setSyncError(actionError instanceof Error ? actionError.message : "The sync setting could not be changed.")
     } finally {
@@ -871,9 +902,10 @@ export function DashboardApp() {
   return (
     <TooltipProvider>
       <a className="skip-link" href="#main-content">Skip to content</a>
+      {error && <p role="alert" className="p-4 text-destructive">{error}</p>}
       <DashboardShell settingsPage={settingsPage} myNotesPage={myNotesPage} insightsPage={insightsPage} user={user}>
         {settingsPage
-          ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} />
+          ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} openStandalone={embedded?.openStandalone} />
           : insightsPage
             ? <InsightsPage data={data} />
             : <NotesPage data={data} loadingMore={loadingMore} onLoadMore={loadMoreNotes} onDelete={deleteNote} />}

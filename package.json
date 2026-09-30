@@ -15,7 +15,9 @@
     "dashboard": "node dist/language-coach/mcp/server.mjs --dashboard",
     "deploy:cloudflare": "pnpm --filter @language-coach/worker run deploy",
     "dev": "pnpm --filter @language-coach/dashboard dev",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "build:plugin:dev": "pnpm build:plugin && node scripts/build-dev-plugin.mjs",
+    "install:plugin:dev": "codex plugin marketplace add ./dist/language-coach-dev-marketplace && codex plugin add language-coach-dev@language-coach-dev-local --json"
   },
   "engines": {
     "node": ">=22.5"

@@ -15,6 +15,8 @@ for (const entry of ["assets", "skills"]) {
   await cp(join(source, entry), join(target, entry), { recursive: true });
 }
 
+await cp(join(packaging, "skills"), join(target, "skills"), { recursive: true });
+
 await mkdir(join(target, ".codex-plugin"), { recursive: true });
 await cp(join(packaging, "plugin.json"), join(target, ".codex-plugin", "plugin.json"));
 await cp(join(packaging, "mcp.json"), join(target, ".mcp.json"));
@@ -26,7 +28,13 @@ for (const hook of ["user-prompt-submit.mjs"]) {
 await mkdir(join(target, "mcp"), { recursive: true });
 await cp(join(root, "apps", "server", "dist", "server.mjs"), join(target, "mcp", "server.mjs"));
 await mkdir(join(target, "dashboard"), { recursive: true });
-await cp(join(root, "apps", "dashboard", "dist"), join(target, "dashboard", "dist"), { recursive: true });
+await cp(
+  join(root, "apps", "dashboard", "dist"),
+  join(target, "dashboard", "dist"),
+  { recursive: true },
+);
+await mkdir(join(target, "ui"), { recursive: true });
+await cp(join(root, "apps", "dashboard", "dist-mcp", "mcp-app.html"), join(target, "ui", "dashboard.html"));
 
 const manifestPath = join(target, ".codex-plugin", "plugin.json");
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
@@ -35,11 +43,24 @@ const cachebuster = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14
 manifest.version = `${rootPackage.version}+codex.${cachebuster}`;
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-for (const relativePath of [
-  ".codex-plugin/plugin.json", ".mcp.json", "assets/icon.png", "assets/logo.png",
-  "hooks/hooks.json", "hooks/user-prompt-submit.mjs",
-  "skills/language-coach/SKILL.md", "mcp/server.mjs", "dashboard/dist/index.html",
-]) {
+manifest.hooks = "./hooks/hooks.json";
+await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+const requiredFiles = [
+  ".codex-plugin/plugin.json",
+  ".mcp.json",
+  "assets/icon.png",
+  "assets/icon-outline-v1.png",
+  "assets/logo.png",
+  "hooks/hooks.json",
+  "hooks/user-prompt-submit.mjs",
+  "skills/language-coach/SKILL.md",
+  "mcp/server.mjs",
+  "dashboard/dist/index.html",
+  "ui/dashboard.html",
+];
+
+for (const relativePath of requiredFiles) {
   await readFile(join(target, relativePath));
 }
 
