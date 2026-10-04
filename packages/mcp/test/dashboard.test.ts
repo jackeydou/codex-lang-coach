@@ -71,3 +71,24 @@ it("omits embedded UI for packages without HTML while preserving the web dashboa
   const fallback = await client.callTool({ name: "start_learning_dashboard", arguments: {} });
   expect(fallback.structuredContent).toMatchObject({ url: "http://127.0.0.1:43127" });
 });
+
+it("exposes reviews only to the app and returns authoritative conflicts through MCP", async () => {
+  const { client, store } = await fixture();
+  const note = store.saveNote({ inputLanguage: "target", originalExpression: "MCP review", polishedExpression: "MCP review", corrections: [], patterns: [], examples: [] });
+  const { tools } = await client.listTools();
+  expect(tools.find((tool) => tool.name === "mark_learning_note_reviewed")).toMatchObject({
+    _meta: { ui: { visibility: ["app"] } }, annotations: { idempotentHint: true, destructiveHint: false },
+  });
+  const args = { id: note.id, requestId: crypto.randomUUID(), expectedVersion: 0 };
+  const first = await client.callTool({ name: "mark_learning_note_reviewed", arguments: args });
+  expect(first.structuredContent).toMatchObject({ id: note.id, review: { version: 1 } });
+  expect((await client.callTool({ name: "mark_learning_note_reviewed", arguments: args })).structuredContent).toEqual(first.structuredContent);
+  const conflict = await client.callTool({ name: "mark_learning_note_reviewed", arguments: { ...args, requestId: crypto.randomUUID() } });
+  expect(conflict.isError).toBe(true);
+  expect(conflict.structuredContent).toMatchObject({ code: "VERSION_CONFLICT", review: { version: 1 } });
+  const snapshot = await client.callTool({ name: "get_learning_dashboard_data", arguments: { order: "review" } });
+  expect(snapshot.structuredContent).toMatchObject({ capabilities: { reviewScheduling: true }, reviewSummary: { new: 0, scheduled: 1 } });
+  const invalid = await client.callTool({ name: "get_learning_dashboard_data", arguments: { order: "review", cursor: "invalid" } });
+  expect(invalid.isError).toBe(true);
+  expect(invalid.structuredContent).toMatchObject({ code: "INVALID_REQUEST" });
+});

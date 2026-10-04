@@ -1,6 +1,8 @@
 import type { App } from "@modelcontextprotocol/ext-apps"
-import type { DashboardData, LanguageProfile } from "@language-coach/core"
+import type { DashboardData, LanguageProfile, NotesOrder, MarkReviewedInput, MarkReviewedResult } from "@language-coach/core"
 import type { LearningDashboardClient } from "../dashboard-api"
+
+import { ReviewError } from "@language-coach/core/review"
 
 type ToolBridge = Pick<App, "callServerTool" | "openLink">
 
@@ -11,14 +13,18 @@ export class McpDashboardClient implements LearningDashboardClient {
     const result = await this.bridge.callServerTool({ name, arguments: args }, { timeout: 15_000 })
     if (result.isError) {
       const message = result.content.filter((item) => item.type === "text").map((item) => item.text).join("\n")
+      const data = result.structuredContent
+      if (data?.code && ["INVALID_REQUEST", "NOT_FOUND", "VERSION_CONFLICT", "NOT_DUE", "SESSION_EXPIRED"].includes(String(data.code))) {
+        throw new ReviewError(data.code as ReviewError["code"], message || `${name} failed.`, data.review as MarkReviewedResult["review"] | undefined)
+      }
       throw new Error(message || `${name} failed.`)
     }
     if (!result.structuredContent) throw new Error(`${name} returned no structured data.`)
     return result.structuredContent
   }
 
-  async getDashboard(cursor?: string): Promise<DashboardData> {
-    const data = await this.call("get_learning_dashboard_data", { limit: 50, ...(cursor ? { cursor } : {}) })
+  async getDashboard(cursor?: string, order?: NotesOrder): Promise<DashboardData> {
+    const data = await this.call("get_learning_dashboard_data", { limit: 50, ...(cursor ? { cursor } : {}), ...(order ? { order } : {}) })
     if (!data.profile || !Array.isArray(data.notes) || !data.progress || !data.notesPage) {
       throw new Error("The dashboard returned an invalid snapshot.")
     }
@@ -37,6 +43,15 @@ export class McpDashboardClient implements LearningDashboardClient {
     const result = await this.call("delete_learning_note", { id })
     if (typeof result.deleted !== "boolean") throw new Error("The server returned an invalid deletion result.")
     return { deleted: result.deleted }
+  }
+
+  async markReviewed(input: MarkReviewedInput): Promise<MarkReviewedResult> {
+    const result = await this.call("mark_learning_note_reviewed", { ...input })
+    const review = result.review as MarkReviewedResult["review"] | undefined
+    if (result.id !== input.id || !review || !Number.isInteger(review.version) || typeof review.nextReviewAt !== "string") {
+      throw new Error("The server returned an invalid review result.")
+    }
+    return result as unknown as MarkReviewedResult
   }
 
   async openStandalone(): Promise<void> {

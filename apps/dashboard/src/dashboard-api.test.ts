@@ -137,3 +137,17 @@ describe("DashboardApi", () => {
     await expect(createDashboardApi(runtime).getDashboard()).rejects.toBeInstanceOf(UnauthorizedError)
   })
 })
+
+it("posts an explicit review request and preserves structured conflict details", async () => {
+  const { ReviewError } = await import("@language-coach/core/review")
+  const client = createDashboardApi({ mode: "local", remoteUrl: "https://remote.example" })
+  const input = { id: "note/id", requestId: crypto.randomUUID(), expectedVersion: 0 }
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ id: input.id, review: { version: 1 } }))
+  await client.markReviewed(input)
+  expect(fetchMock).toHaveBeenCalledWith("/api/notes/note%2Fid/review", expect.objectContaining({
+    method: "POST", body: JSON.stringify({ requestId: input.requestId, expectedVersion: 0 }),
+  }))
+  fetchMock.mockResolvedValueOnce(json({ error: "Review session expired.", code: "SESSION_EXPIRED" }, 409))
+  await expect(client.getDashboard("cursor", "review")).rejects.toBeInstanceOf(ReviewError)
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/dashboard?limit=50&cursor=cursor&order=review", expect.any(Object))
+})

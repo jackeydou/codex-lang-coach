@@ -33,3 +33,15 @@ describe("McpDashboardClient", () => {
     expect(external.bridge.openLink).not.toHaveBeenCalled()
   })
 })
+
+it("submits review actions through the bridge and retains typed error state", async () => {
+  const { ReviewError } = await import("@language-coach/core/review")
+  const input = { id: "fixture", requestId: crypto.randomUUID(), expectedVersion: 0 }
+  const review = { version: 1, nextReviewAt: "2026-10-04T12:00:00.000Z" }
+  const { bridge, client } = fixture({ structuredContent: { id: input.id, review } })
+  expect(await client.markReviewed(input)).toMatchObject({ review })
+  expect(bridge.callServerTool).toHaveBeenCalledWith({ name: "mark_learning_note_reviewed", arguments: input }, { timeout: 15_000 })
+  const failed = fixture({ isError: true, structuredContent: { code: "VERSION_CONFLICT", review }, content: [{ type: "text", text: "Updated elsewhere." }] })
+  await expect(failed.client.markReviewed(input)).rejects.toMatchObject({ code: "VERSION_CONFLICT", review })
+  await expect(failed.client.markReviewed(input)).rejects.toBeInstanceOf(ReviewError)
+})

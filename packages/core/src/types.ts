@@ -92,10 +92,46 @@ export interface ProgressSummary {
 
 export interface DashboardData {
   profile: LanguageProfile;
-  notes: LearningNote[];
+  notes: DashboardNote[];
   progress: ProgressSummary;
   sync?: SyncStatus;
   notesPage?: NotesPage;
+  capabilities?: { reviewScheduling: boolean };
+  reviewSummary?: ReviewSummary;
+}
+
+export type NotesOrder = "review" | "recent";
+
+export interface ReviewState {
+  stage: number;
+  reviewCount: number;
+  lastReviewedAt: string | null;
+  nextReviewAt: string | null;
+  version: number;
+  algorithmVersion: "fixed-v1";
+}
+
+// Optional for dashboards served by older or remote servers.
+export interface DashboardNote extends LearningNote {
+  review?: ReviewState;
+}
+
+export interface ReviewSummary {
+  due: number;
+  new: number;
+  scheduled: number;
+  asOf: string;
+}
+
+export interface MarkReviewedInput {
+  id: string;
+  requestId: string;
+  expectedVersion: number;
+}
+
+export interface MarkReviewedResult {
+  id: string;
+  review: ReviewState;
 }
 
 export interface NotesPage {

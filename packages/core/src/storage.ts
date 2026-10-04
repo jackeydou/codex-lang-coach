@@ -16,8 +16,15 @@ import type {
   SyncSnapshot,
   TransferExample,
   InputLanguageKind,
+  DashboardNote,
+  MarkReviewedInput,
+  MarkReviewedResult,
+  NotesOrder,
+  ReviewState,
+  ReviewSummary,
 } from "./types.js";
 import { calculateProgress } from "./progress.js";
+import { advanceReview, emptyReviewState, isReviewDue, ReviewError, REVIEW_SESSION_TTL_MS } from "./review.js";
 
 export interface LearningStore {
   getProfile(): LanguageProfile;
@@ -27,7 +34,8 @@ export interface LearningStore {
   listNotes(limit?: number, offset?: number): LearningNote[];
   deleteNote(id: string): boolean;
   getProgress(): ProgressSummary;
-  getDashboardData(limit?: number, cursor?: string): DashboardData;
+  getDashboardData(limit?: number, cursor?: string, order?: NotesOrder): DashboardData;
+  markReviewed(input: MarkReviewedInput): MarkReviewedResult;
   getSyncCheckpoint(remoteUrl: string, userId: string): SyncCheckpoint;
   getSyncSnapshot(remoteUrl: string, userId: string): SyncSnapshot;
   markSyncCheckpoint(remoteUrl: string, userId: string, revision: number, syncedAt: string): void;
@@ -99,13 +107,47 @@ function mapNote(row: NoteRow): LearningNote {
   };
 }
 
+type DashboardNoteRow = NoteRow & {
+  stage: number | null;
+  review_count: number | null;
+  last_reviewed_at: string | null;
+  next_review_at: string | null;
+  version: number | null;
+  rank?: number;
+};
+
+const REVIEW_COLUMNS = `reviews.stage, reviews.review_count, reviews.last_reviewed_at,
+  reviews.next_review_at, reviews.version`;
+
+function mapReview(row?: DashboardNoteRow): ReviewState {
+  if (!row || row.stage === null) return emptyReviewState();
+  return {
+    stage: row.stage, reviewCount: row.review_count!, lastReviewedAt: row.last_reviewed_at,
+    nextReviewAt: row.next_review_at, version: row.version!, algorithmVersion: "fixed-v1",
+  };
+}
+
+function mapDashboardNote(row: DashboardNoteRow): DashboardNote {
+  return { ...mapNote(row), review: mapReview(row) };
+}
+
+function decodeReviewCursor(value: string): { sessionId: string; afterRank: number } {
+  try {
+    const cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (typeof cursor.sessionId === "string" && Number.isSafeInteger(cursor.afterRank) && cursor.afterRank >= 0) {
+      return { sessionId: cursor.sessionId, afterRank: cursor.afterRank };
+    }
+  } catch { /* Invalid cursors must not silently restart the deck. */ }
+  throw new ReviewError("INVALID_REQUEST", "Invalid review cursor. Refresh the review order.");
+}
+
 export class SqliteLearningStore implements LearningStore {
   private readonly database: DatabaseSync;
 
   constructor(databasePath = resolveDatabasePath()) {
     mkdirSync(dirname(databasePath), { recursive: true });
     this.database = new DatabaseSync(databasePath);
-    this.database.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
+    this.database.exec("PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
     this.migrate();
   }
 
@@ -135,6 +177,34 @@ export class SqliteLearningStore implements LearningStore {
       );
       CREATE INDEX IF NOT EXISTS idx_learning_notes_created_at
         ON learning_notes(created_at DESC);
+      CREATE TABLE IF NOT EXISTS learning_note_reviews (
+        note_id TEXT PRIMARY KEY REFERENCES learning_notes(id) ON DELETE CASCADE,
+        stage INTEGER NOT NULL CHECK (stage BETWEEN 1 AND 6),
+        review_count INTEGER NOT NULL CHECK (review_count > 0),
+        last_reviewed_at TEXT NOT NULL,
+        next_review_at TEXT NOT NULL,
+        version INTEGER NOT NULL CHECK (version > 0),
+        algorithm_version TEXT NOT NULL DEFAULT 'fixed-v1'
+      );
+      CREATE INDEX IF NOT EXISTS idx_learning_reviews_due ON learning_note_reviews(next_review_at, note_id);
+      CREATE TABLE IF NOT EXISTS learning_review_events (
+        request_id TEXT PRIMARY KEY,
+        note_id TEXT NOT NULL REFERENCES learning_notes(id) ON DELETE CASCADE,
+        expected_version INTEGER NOT NULL,
+        reviewed_at TEXT NOT NULL,
+        response_json TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS review_sessions (
+        id TEXT PRIMARY KEY,
+        as_of TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS review_session_items (
+        session_id TEXT NOT NULL REFERENCES review_sessions(id) ON DELETE CASCADE,
+        rank INTEGER NOT NULL,
+        note_id TEXT NOT NULL,
+        PRIMARY KEY (session_id, rank)
+      );
       CREATE TABLE IF NOT EXISTS deleted_learning_notes (
         id TEXT PRIMARY KEY,
         deleted_at TEXT NOT NULL,
@@ -321,26 +391,134 @@ export class SqliteLearningStore implements LearningStore {
     return calculateProgress(this.listAllNotes());
   }
 
-  getDashboardData(limit = 50, cursorValue?: string): DashboardData {
-    const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+  markReviewed(input: MarkReviewedInput): MarkReviewedResult {
+    if (!input || typeof input.id !== "string" || !input.id || input.id.length > 200
+      || typeof input.requestId !== "string" || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(input.requestId)
+      || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 0) {
+      throw new ReviewError("INVALID_REQUEST", "A note ID, UUID request ID and non-negative version are required.");
+    }
+    return this.transaction(() => {
+      const event = this.database.prepare("SELECT * FROM learning_review_events WHERE request_id = ?").get(input.requestId) as {
+        note_id: string; expected_version: number; response_json: string;
+      } | undefined;
+      if (event) {
+        if (event.note_id !== input.id || event.expected_version !== input.expectedVersion) {
+          throw new ReviewError("INVALID_REQUEST", "This request ID was already used for a different review.");
+        }
+        return JSON.parse(event.response_json) as MarkReviewedResult;
+      }
+      const row = this.database.prepare(`SELECT notes.*, ${REVIEW_COLUMNS} FROM learning_notes AS notes
+        LEFT JOIN learning_note_reviews AS reviews ON reviews.note_id = notes.id WHERE notes.id = ?`)
+        .get(input.id) as DashboardNoteRow | undefined;
+      if (!row) throw new ReviewError("NOT_FOUND", "This learning note no longer exists.");
+      const current = mapReview(row);
+      if (current.version !== input.expectedVersion) {
+        throw new ReviewError("VERSION_CONFLICT", "This card was updated elsewhere. Its review status has been refreshed.", current);
+      }
+      const timestamp = now();
+      if (!isReviewDue(current, Date.parse(timestamp))) {
+        throw new ReviewError("NOT_DUE", "This card is not due for review yet.", current);
+      }
+      const review = advanceReview(current, timestamp);
+      this.database.prepare(`INSERT INTO learning_note_reviews
+        (note_id, stage, review_count, last_reviewed_at, next_review_at, version, algorithm_version)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(note_id) DO UPDATE SET stage = excluded.stage, review_count = excluded.review_count,
+          last_reviewed_at = excluded.last_reviewed_at, next_review_at = excluded.next_review_at,
+          version = excluded.version, algorithm_version = excluded.algorithm_version`)
+        .run(input.id, review.stage, review.reviewCount, review.lastReviewedAt!, review.nextReviewAt!, review.version, review.algorithmVersion);
+      const result = { id: input.id, review };
+      this.database.prepare(`INSERT INTO learning_review_events
+        (request_id, note_id, expected_version, reviewed_at, response_json) VALUES (?, ?, ?, ?, ?)`)
+        .run(input.requestId, input.id, input.expectedVersion, timestamp, JSON.stringify(result));
+      return result;
+    });
+  }
+
+  private getReviewSummary(asOf: string, sessionId?: string): ReviewSummary {
+    const row = this.database.prepare(`SELECT
+      COALESCE(SUM(CASE WHEN reviews.stage IS NOT NULL AND reviews.next_review_at <= ? THEN 1 ELSE 0 END), 0) AS due,
+      COALESCE(SUM(CASE WHEN reviews.stage IS NULL THEN 1 ELSE 0 END), 0) AS new,
+      COALESCE(SUM(CASE WHEN reviews.next_review_at > ? THEN 1 ELSE 0 END), 0) AS scheduled
+      FROM learning_notes AS notes LEFT JOIN learning_note_reviews AS reviews ON reviews.note_id = notes.id
+      WHERE (? IS NULL OR notes.id IN (SELECT note_id FROM review_session_items WHERE session_id = ?))`)
+      .get(asOf, asOf, sessionId ?? null, sessionId ?? null) as { due: number; new: number; scheduled: number };
+    return { ...row, asOf };
+  }
+
+  private getReviewDashboardData(limit: number, cursorValue?: string): DashboardData {
+    return this.transaction(() => {
+      const timestamp = now();
+      let sessionId: string;
+      let afterRank = -1;
+      let asOf = timestamp;
+      if (cursorValue) {
+        const cursor = decodeReviewCursor(cursorValue);
+        sessionId = cursor.sessionId;
+        afterRank = cursor.afterRank;
+        const session = this.database.prepare("SELECT as_of, expires_at FROM review_sessions WHERE id = ?").get(sessionId) as {
+          as_of: string; expires_at: string;
+        } | undefined;
+        if (!session || session.expires_at <= timestamp) {
+          throw new ReviewError("SESSION_EXPIRED", "This review session expired. Refresh the review order.");
+        }
+        asOf = session.as_of;
+      } else {
+        this.database.prepare("DELETE FROM review_sessions WHERE expires_at <= ?").run(timestamp);
+        sessionId = randomUUID();
+        this.database.prepare("INSERT INTO review_sessions (id, as_of, expires_at) VALUES (?, ?, ?)")
+          .run(sessionId, timestamp, new Date(Date.parse(timestamp) + REVIEW_SESSION_TTL_MS).toISOString());
+        this.database.prepare(`INSERT INTO review_session_items (session_id, rank, note_id)
+          SELECT ?, ROW_NUMBER() OVER (ORDER BY
+            CASE WHEN reviews.next_review_at <= ? THEN 0 WHEN reviews.stage IS NULL THEN 1 ELSE 2 END,
+            CASE WHEN reviews.stage IS NOT NULL THEN reviews.next_review_at END ASC,
+            CASE WHEN reviews.next_review_at <= ? THEN reviews.stage END ASC,
+            notes.created_at DESC, notes.id DESC) - 1, notes.id
+          FROM learning_notes AS notes LEFT JOIN learning_note_reviews AS reviews ON reviews.note_id = notes.id`)
+          .run(sessionId, timestamp, timestamp);
+      }
+      const rows = this.database.prepare(`SELECT notes.*, ${REVIEW_COLUMNS}, items.rank
+        FROM review_session_items AS items JOIN learning_notes AS notes ON notes.id = items.note_id
+        LEFT JOIN learning_note_reviews AS reviews ON reviews.note_id = notes.id
+        WHERE items.session_id = ? AND items.rank > ? ORDER BY items.rank LIMIT ?`)
+        .all(sessionId, afterRank, limit + 1) as unknown as DashboardNoteRow[];
+      const hasMore = rows.length > limit;
+      const pageRows = rows.slice(0, limit);
+      const last = pageRows.at(-1);
+      return {
+        profile: this.getProfile(), notes: pageRows.map(mapDashboardNote), progress: this.getProgress(),
+        capabilities: { reviewScheduling: true }, reviewSummary: this.getReviewSummary(asOf, sessionId),
+        notesPage: {
+          limit, hasMore,
+          nextCursor: hasMore && last ? Buffer.from(JSON.stringify({ sessionId, afterRank: last.rank })).toString("base64url") : undefined,
+        },
+      };
+    });
+  }
+
+  getDashboardData(limit = 50, cursorValue?: string, order: NotesOrder = "recent"): DashboardData {
+    const safeLimit = Math.max(1, Math.min(100, Number.isFinite(limit) ? Math.trunc(limit) : 50));
+    if (order === "review") return this.getReviewDashboardData(safeLimit, cursorValue);
+    if (order !== "recent") throw new ReviewError("INVALID_REQUEST", "Unknown card order.");
+    if (cursorValue) {
+      try {
+        const value = JSON.parse(Buffer.from(cursorValue, "base64url").toString("utf8"));
+        if (value.sessionId) throw new ReviewError("INVALID_REQUEST", "A review cursor cannot be used for recent notes.");
+      } catch (error) { if (error instanceof ReviewError) throw error; }
+    }
     const cursor = decodeNotesCursor(cursorValue);
-    const rows = this.database.prepare(`SELECT * FROM learning_notes
-      WHERE (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?))
-      ORDER BY created_at DESC, id DESC LIMIT ?`)
+    const rows = this.database.prepare(`SELECT notes.*, ${REVIEW_COLUMNS} FROM learning_notes AS notes
+      LEFT JOIN learning_note_reviews AS reviews ON reviews.note_id = notes.id
+      WHERE (? IS NULL OR notes.created_at < ? OR (notes.created_at = ? AND notes.id < ?))
+      ORDER BY notes.created_at DESC, notes.id DESC LIMIT ?`)
       .all(cursor?.createdAt ?? null, cursor?.createdAt ?? null, cursor?.createdAt ?? null,
-        cursor?.id ?? null, safeLimit + 1) as unknown as NoteRow[];
+        cursor?.id ?? null, safeLimit + 1) as unknown as DashboardNoteRow[];
     const hasMore = rows.length > safeLimit;
-    const notes = rows.slice(0, safeLimit).map(mapNote);
-    const progress = this.getProgress();
+    const notes = rows.slice(0, safeLimit).map(mapDashboardNote);
     return {
-      profile: this.getProfile(),
-      notes,
-      progress,
-      notesPage: {
-        limit: safeLimit,
-        hasMore,
-        nextCursor: hasMore && notes.length ? encodeNotesCursor(notes[notes.length - 1]!) : undefined,
-      },
+      profile: this.getProfile(), notes, progress: this.getProgress(), capabilities: { reviewScheduling: true },
+      reviewSummary: this.getReviewSummary(now()),
+      notesPage: { hasMore, limit: safeLimit, nextCursor: hasMore && notes.length ? encodeNotesCursor(notes.at(-1)!) : undefined },
     };
   }
 

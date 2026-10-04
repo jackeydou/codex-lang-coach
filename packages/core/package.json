@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
-    "./progress": "./src/progress.ts"
+    "./progress": "./src/progress.ts",
+    "./review": "./src/review.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",

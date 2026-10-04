@@ -2,7 +2,7 @@ import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { dirname, extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { LearningStore, RemoteLearningSync, RemoteSyncConfig } from "@language-coach/core";
+import { ReviewError, type LearningStore, type RemoteLearningSync, type RemoteSyncConfig } from "@language-coach/core";
 
 const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -84,7 +84,7 @@ export async function startDashboardServer(
         }
         const requestedLimit = Number(url.searchParams.get("limit") || 50);
         const limit = Math.max(1, Math.min(100, Number.isFinite(requestedLimit) ? Math.trunc(requestedLimit) : 50));
-        sendJson(response, 200, { ...store.getDashboardData(limit, url.searchParams.get("cursor") || undefined), sync: remoteSync.status });
+        sendJson(response, 200, { ...store.getDashboardData(limit, url.searchParams.get("cursor") || undefined, (url.searchParams.get("order") || "recent") as "review" | "recent"), sync: remoteSync.status });
         return;
       }
       if (url.pathname === "/api/sync/configure" && request.method === "POST") {
@@ -108,6 +108,15 @@ export async function startDashboardServer(
         });
         if (remoteSync.status.enabled) void remoteSync.sync().catch(() => undefined);
         sendJson(response, 200, profile);
+        return;
+      }
+      const reviewPath = url.pathname.match(/^\/api\/notes\/([^/]+)\/review$/);
+      if (reviewPath && request.method === "POST") {
+        const input = await readJson(request);
+        sendJson(response, 200, store.markReviewed({
+          id: decodeURIComponent(reviewPath[1]!), requestId: input.requestId as string,
+          expectedVersion: input.expectedVersion as number,
+        }));
         return;
       }
       if (url.pathname.startsWith("/api/notes/") && request.method === "DELETE") {
@@ -138,7 +147,13 @@ export async function startDashboardServer(
       });
       createReadStream(filePath).pipe(response);
     } catch (error) {
-      sendJson(response, 400, { error: error instanceof Error ? error.message : "Invalid request" });
+      if (error instanceof ReviewError) {
+        const status = error.code === "NOT_FOUND" ? 404
+          : ["VERSION_CONFLICT", "NOT_DUE", "SESSION_EXPIRED"].includes(error.code) ? 409 : 400;
+        sendJson(response, status, { error: error.message, code: error.code, review: error.review });
+      } else {
+        sendJson(response, 400, { error: error instanceof Error ? error.message : "Invalid request" });
+      }
     }
   });
 

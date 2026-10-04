@@ -1911,3 +1911,42 @@
   .legal-sections section { grid-template-columns: 2rem minmax(0, 1fr); }
   .legal-footer { align-items: flex-start; flex-direction: column; }
 }
+
+.review-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+  padding-inline: 0.25rem;
+}
+.review-toolbar > div { display: flex; align-items: center; gap: 0.4rem; }
+.review-toolbar select {
+  max-width: 10rem;
+  border: 1px solid #d4cfc8;
+  border-radius: 0.5rem;
+  background: #fffdfa;
+  padding: 0.4rem;
+  font: inherit;
+  font-size: 0.75rem;
+}
+.review-toolbar p { color: #6f6962; font-size: 0.7rem; }
+.flashcard-section > .flashcard-deck { flex: 1; height: auto; }
+.flashcard-review-action {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-top: 1px solid #e4ddd3;
+  padding: 0.85rem clamp(1.25rem, 4vw, 3.25rem);
+  background: #f8f5ef;
+}
+.flashcard-review-copy { display: flex; min-width: 0; flex-direction: column; gap: 0.2rem; font-size: 0.72rem; }
+.flashcard-review-copy > span { color: #6f6962; }
+.flashcard-review-copy .review-device-note { font-size: 0.62rem; }
+@media (max-width: 47.99rem) {
+  .review-toolbar { align-items: start; flex-direction: column; padding-left: 2.6rem; }
+  .flashcard-review-action { align-items: stretch; flex-direction: column; padding-block: 0.65rem; }
+}
