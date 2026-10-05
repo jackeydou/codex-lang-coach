@@ -1,51 +1,26 @@
-/* The embedded entry follows the host theme without changing the website. */
+/* Host theme also covers portal dialogs rendered outside the workspace. */
 :root.dark {
   color-scheme: dark;
-  --background: #20201e;
-  --foreground: #eeeae4;
-  --card: #292825;
-  --card-foreground: #eeeae4;
-  --popover: #292825;
-  --popover-foreground: #eeeae4;
-  --primary: #eeeae4;
-  --primary-foreground: #242320;
-  --secondary: #34322e;
-  --secondary-foreground: #eeeae4;
-  --muted: #34322e;
-  --muted-foreground: #b4ada3;
-  --accent: #3c3934;
-  --accent-foreground: #eeeae4;
-  --border: #48443d;
-  --input: #585249;
-  --ring: #b4ada3;
-  --sidebar: #292825;
-  --sidebar-foreground: #eeeae4;
-  --sidebar-accent: #3c3934;
-  --sidebar-accent-foreground: #eeeae4;
-  --sidebar-border: #48443d;
+  --background: #1d1e20;
+  --foreground: #ececef;
+  --card: #1d1e20;
+  --card-foreground: #ececef;
+  --popover: #242527;
+  --popover-foreground: #ececef;
+  --primary: #ececef;
+  --primary-foreground: #1d1e20;
+  --secondary: #2c2d30;
+  --secondary-foreground: #ececef;
+  --muted: #2c2d30;
+  --muted-foreground: #a1a2a8;
+  --accent: #303135;
+  --accent-foreground: #ececef;
+  --border: #36373b;
+  --input: #46474d;
+  --ring: #a1a2a8;
+  --sidebar: #222325;
+  --sidebar-foreground: #ececef;
+  --sidebar-accent: #303135;
+  --sidebar-accent-foreground: #ececef;
+  --sidebar-border: #36373b;
 }
-.dark .dashboard-shell-main, .dark .dashboard-loading { background: var(--background); }
-.dark .dashboard-sidebar [data-sidebar="sidebar"],
-.dark .learning-insights, .dark .flashcard-arrow-buttons,
-.dark .flashcard, .dark .pattern-dialog,
-.dark .settings-page [data-slot="card"], .dark .quick-tips kbd,
-.dark .flashcard-controls > p span { background: var(--card); border-color: var(--border); }
-.dark .flashcard { box-shadow: 0 1px 2px #0003; }
-.dark .dashboard-sidebar-identity, .dark .dashboard-sidebar-profile strong,
-.dark .pattern-row strong, .dark .flashcard-deck-status strong { color: var(--foreground); }
-.dark .dashboard-sidebar-profile span, .dark .insight-heading p,
-.dark .insight-heading > span, .dark .pattern-row p, .dark .pattern-row b,
-.dark .pattern-dialog [data-slot="dialog-description"], .dark .patterns-empty,
-.dark .patterns-pagination span, .dark .quick-tips > p,
-.dark .quick-tips kbd, .dark .flashcard-controls > p,
-.dark .flashcard-controls > p span, .dark .flashcard-expression-pair blockquote { color: var(--muted-foreground); }
-.dark .insight-section + .insight-section, .dark .repeat-patterns li,
-.dark .patterns-pagination, .dark .pattern-dialog [data-slot="dialog-description"],
-.dark .flashcard-arrow-buttons [data-slot="button"] + [data-slot="button"] { border-color: var(--border); }
-.dark .pattern-row:hover, .dark .flashcard-arrow-buttons [data-slot="button"]:hover:not(:disabled) { background: var(--accent); }
-.dark .lesson-corrections h3 { color: #f2ae88; }
-.dark .lesson-patterns h3, .dark .pattern-item strong { color: #91cfad; }
-.dark .lesson-examples h3 { color: #e5c47b; }
-.dark .correction-item > p, .dark .pattern-item p { color: var(--muted-foreground); }
-.dark .lesson-detail-section { border-color: var(--border); }
-.dark .flashcard-delete-action [data-slot="button"] { background: var(--card); border-color: var(--border); color: var(--muted-foreground); }

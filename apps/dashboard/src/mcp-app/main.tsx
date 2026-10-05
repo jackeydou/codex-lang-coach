@@ -5,6 +5,7 @@ import { DashboardApp } from "../App"
 import { McpDashboardClient } from "./client"
 import "../styles.css"
 import "./styles.css"
+import "../dashboard.css"
 
 const root = createRoot(document.getElementById("root")!)
 const app = new App({ name: "Language Coach", version: "0.1.5" }, {}, { autoResize: false })
