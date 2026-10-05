@@ -32,7 +32,7 @@ export function NoteFlashcard({ note, onDelete }: {
       <div className="flashcard-delete-action">
         <AlertDialog>
           <AlertDialogTrigger asChild><Button variant="ghost" size="icon" aria-label="Delete this note"><Trash2Icon /></Button></AlertDialogTrigger>
-          <AlertDialogContent>
+          <AlertDialogContent className="coach-confirm-dialog">
             <AlertDialogHeader>
               <AlertDialogTitle>Delete this learning note?</AlertDialogTitle>
               <AlertDialogDescription>This permanently removes the expression, corrections, patterns, and examples.</AlertDialogDescription>
@@ -52,7 +52,6 @@ export function NoteFlashcard({ note, onDelete }: {
               <div className="expression-label expression-label--original">You wrote</div>
               <blockquote className="mt-2 text-balance">“{note.originalExpression}”</blockquote>
             </div>
-            <ArrowLeftRightIcon className="flashcard-pair-arrow" aria-hidden="true" />
             <div className="expression-column expression-column--natural">
               <div className="expression-label expression-label--natural">Natural version</div>
               <p className="mt-2 text-pretty">“{note.polishedExpression}”</p>
