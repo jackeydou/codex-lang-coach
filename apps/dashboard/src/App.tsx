@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { createDashboardApi, type DashboardApi, type LearningDashboardClient, loadDashboardRuntime, UnauthorizedError } from "@/dashboard-api"
+import { resolveDashboardRoute, type DashboardPage } from "@/dashboard-route"
 
 function LoadingDashboard() {
   return (
@@ -475,8 +476,6 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
   )
 }
 
-type DashboardPage = "flashcards" | "patterns" | "activity" | "settings"
-
 function DashboardSidebarNavigation({ page, footer = false }: { page: DashboardPage; footer?: boolean }) {
   const { setOpenMobile } = useSidebar()
   const destinations = [
@@ -636,7 +635,8 @@ export function SettingsPage({ data, saving, onSave, mode, user, syncChanging, o
 export function DashboardApp({ embedded }: { embedded?: { client: LearningDashboardClient; openStandalone: () => Promise<void> } }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const settingsPage = pathname === "/dashboard/settings" || pathname.startsWith("/dashboard/settings/")
+  const { page, redirectTo } = resolveDashboardRoute(pathname)
+  const settingsPage = page === "settings"
   const [data, setData] = useState<DashboardData>()
   const [runtime, setRuntime] = useState<DashboardRuntimeConfig | undefined>(embedded ? { mode: "local", remoteUrl: "" } : undefined)
   const [auth, setAuth] = useState<AuthClient>()
@@ -843,11 +843,7 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
     )
   }
 
-  if (pathname === "/dashboard/notes") return <Navigate to="/dashboard" replace />
-  if (pathname === "/dashboard/insights") return <Navigate to="/dashboard/activity" replace />
-  const page: DashboardPage = settingsPage ? "settings"
-    : pathname === "/dashboard/patterns" ? "patterns"
-    : pathname === "/dashboard/activity" ? "activity" : "flashcards"
+  if (redirectTo) return <Navigate to={redirectTo} replace />
 
   return (
     <TooltipProvider>
