@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RemoteLearningSync, SqliteLearningStore } from "@language-coach/core";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { startDashboardServer } from "./dashboard-server.js";
 
 it("opens the local dashboard directly and redirects root requests without affecting its API", async () => {
@@ -58,6 +58,13 @@ it("records reviews through HTTP with typed errors and shared review pagination"
     const dashboard = await (await fetch(`${origin}/api/dashboard?order=review`)).json();
     expect(dashboard).toMatchObject({ capabilities: { reviewScheduling: true }, reviewSummary: { new: 0, scheduled: 1 } });
     expect(dashboard.notes[0].review).toEqual(result.review);
+    const readDeck = vi.spyOn(store, "getDashboardData");
+    store.updateProfile({ targetLanguage: "French" });
+    const status = await (await fetch(`${origin}/api/dashboard/status`)).json();
+    expect(status).toMatchObject({ profile: { targetLanguage: "French" }, progress: { totalNotes: 1 }, sync: { enabled: false } });
+    expect(Object.keys(status)).toEqual(["profile", "progress", "sync"]);
+    expect(readDeck).not.toHaveBeenCalled();
+    readDeck.mockRestore();
     const malformedCursor = await fetch(`${origin}/api/dashboard?order=review&cursor=invalid`);
     expect(malformedCursor.status).toBe(400);
     expect(await malformedCursor.json()).toMatchObject({ code: "INVALID_REQUEST" });

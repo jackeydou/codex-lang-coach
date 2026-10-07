@@ -94,12 +94,17 @@ try {
   const reviewSnapshot = await call("get_learning_dashboard_data", { order: "review" });
   assert.equal(reviewSnapshot.structuredContent.notes[0].review.reviewCount, 1);
   assert.equal(reviewSnapshot.structuredContent.reviewSummary.scheduled, 1);
+  const dashboardStatus = await call("get_learning_dashboard_status");
+  assert(!dashboardStatus.isError);
+  assert.deepEqual(Object.keys(dashboardStatus.structuredContent).sort(), ["profile", "progress", "sync"]);
+  assert.equal(dashboardStatus.structuredContent.profile.targetLanguage, "French");
+  assert.equal(dashboardStatus.structuredContent.progress.totalNotes, 1);
   const deleted = await call("delete_learning_note", { id: saved.structuredContent.id });
   assert.equal(deleted.structuredContent.deleted, true);
   const empty = await call("get_learning_dashboard_data");
   assert.equal(empty.structuredContent.notes.length, 0);
   const builtManifest = JSON.parse(await readFile(join(directory, "plugin/.codex-plugin/plugin.json"), "utf8"));
-  const report = { codexVersion: execFileSync("codex", ["--version"], { encoding: "utf8" }).trim(), pluginVersion: builtManifest.version, installedDevelopmentPluginVersion: plugin.summary.localVersion, server: server.name, toolMetadata: tool._meta, resourceLoaded: true, settingsUpdated: true, noteSavedAndDeleted: true, isolatedDatabase: true, reviewRecordedAndDeduplicated: true, developmentHooksVerified: !reviewOnly, nativeRendering: "Not verified by this protocol test" };
+  const report = { codexVersion: execFileSync("codex", ["--version"], { encoding: "utf8" }).trim(), pluginVersion: builtManifest.version, installedDevelopmentPluginVersion: plugin.summary.localVersion, server: server.name, toolMetadata: tool._meta, resourceLoaded: true, settingsUpdated: true, noteSavedAndDeleted: true, isolatedDatabase: true, reviewRecordedAndDeduplicated: true, statusWithoutDeck: true, developmentHooksVerified: !reviewOnly, nativeRendering: "Not verified by this protocol test" };
   await writeFile(resolve("dist/codex-ui-test.json"), `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report, null, 2));
   if (process.argv.includes("--serve")) {
@@ -133,7 +138,7 @@ try {
       bundle: true, write: false, format: "esm", platform: "browser",
     });
     const audit = [];
-    const allowed = new Set(["get_learning_dashboard_data", "update_language_profile", "delete_learning_note", "mark_learning_note_reviewed"]);
+    const allowed = new Set(["get_learning_dashboard_data", "get_learning_dashboard_status", "update_language_profile", "delete_learning_note", "mark_learning_note_reviewed"]);
     const http = createServer(async (req, res) => {
       try {
         if (req.url === "/host.js") { res.setHeader("content-type", "text/javascript"); res.end(bundle.outputFiles[0].text); return; }

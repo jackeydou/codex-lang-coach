@@ -108,6 +108,20 @@ export function createLanguageCoachMcpServer({
       } catch (error) { return reviewFailure(error); }
     });
 
+    server.registerTool("get_learning_dashboard_status", {
+      title: "Get learning dashboard status",
+      description: "Read language settings, progress and sync status without reading or renewing a review deck.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: { ui: { visibility: ["app"] } },
+    }, async () => {
+      const { enabled, state, lastSyncedAt, completedItems, totalItems } = remoteSync.status;
+      return result({
+        profile: store.getProfile(), progress: store.getProgress(),
+        sync: { enabled, state, lastSyncedAt, completedItems, totalItems },
+      });
+    });
+
     server.registerTool("mark_learning_note_reviewed", {
       title: "Mark learning note reviewed",
       description: "Record a review explicitly completed by the user in the dashboard. Review progress is stored on this device.",

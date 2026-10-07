@@ -45,3 +45,12 @@ it("submits review actions through the bridge and retains typed error state", as
   await expect(failed.client.markReviewed(input)).rejects.toMatchObject({ code: "VERSION_CONFLICT", review })
   await expect(failed.client.markReviewed(input)).rejects.toBeInstanceOf(ReviewError)
 })
+
+it("polls status through the status tool without deck options and rejects malformed responses", async () => {
+  const status = { profile: {}, progress: {}, sync: { enabled: false } }
+  const { client, bridge } = fixture({ structuredContent: status })
+  expect(await client.getDashboardStatus()).toEqual(status)
+  expect(bridge.callServerTool).toHaveBeenCalledWith({ name: "get_learning_dashboard_status", arguments: {} }, { timeout: 15_000 })
+  const malformed = fixture({ structuredContent: { profile: {} } })
+  await expect(malformed.client.getDashboardStatus()).rejects.toThrow("invalid status")
+})

@@ -1,5 +1,5 @@
 import type { App } from "@modelcontextprotocol/ext-apps"
-import type { DashboardData, LanguageProfile, NotesOrder, MarkReviewedInput, MarkReviewedResult } from "@language-coach/core"
+import type { DashboardData, DashboardStatus, LanguageProfile, NotesOrder, MarkReviewedInput, MarkReviewedResult } from "@language-coach/core"
 import type { LearningDashboardClient } from "../dashboard-api"
 
 import { ReviewError } from "@language-coach/core/review"
@@ -29,6 +29,12 @@ export class McpDashboardClient implements LearningDashboardClient {
       throw new Error("The dashboard returned an invalid snapshot.")
     }
     return data as unknown as DashboardData
+  }
+
+  async getDashboardStatus(): Promise<DashboardStatus> {
+    const status = await this.call("get_learning_dashboard_status")
+    if (!status.profile || !status.progress) throw new Error("The dashboard returned an invalid status.")
+    return status as unknown as DashboardStatus
   }
 
   async updateProfile(profile: Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">): Promise<LanguageProfile> {

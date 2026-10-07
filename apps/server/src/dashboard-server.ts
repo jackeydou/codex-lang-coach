@@ -87,6 +87,10 @@ export async function startDashboardServer(
         sendJson(response, 200, { ...store.getDashboardData(limit, url.searchParams.get("cursor") || undefined, (url.searchParams.get("order") || "recent") as "review" | "recent"), sync: remoteSync.status });
         return;
       }
+      if (url.pathname === "/api/dashboard/status" && request.method === "GET") {
+        sendJson(response, 200, { profile: store.getProfile(), progress: store.getProgress(), sync: remoteSync.status });
+        return;
+      }
       if (url.pathname === "/api/sync/configure" && request.method === "POST") {
         const input = await readJson(request);
         remoteSync.configure(input as unknown as RemoteSyncConfig);

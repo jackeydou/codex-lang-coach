@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { RemoteLearningSync, SqliteLearningStore } from "@language-coach/core";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createLanguageCoachMcpServer, DASHBOARD_RESOURCE_URI } from "../src/index.js";
 
 const cleanup: (() => Promise<void>)[] = [];
@@ -67,6 +67,7 @@ it("omits embedded UI for packages without HTML while preserving the web dashboa
   const { tools } = await client.listTools();
   expect(tools.map((tool) => tool.name)).not.toContain("open_learning_dashboard");
   expect(tools.map((tool) => tool.name)).not.toContain("get_learning_dashboard_data");
+  expect(tools.map((tool) => tool.name)).not.toContain("get_learning_dashboard_status");
   expect(client.getServerCapabilities()?.resources).toBeUndefined();
   const fallback = await client.callTool({ name: "start_learning_dashboard", arguments: {} });
   expect(fallback.structuredContent).toMatchObject({ url: "http://127.0.0.1:43127" });
@@ -91,4 +92,34 @@ it("exposes reviews only to the app and returns authoritative conflicts through 
   const invalid = await client.callTool({ name: "get_learning_dashboard_data", arguments: { order: "review", cursor: "invalid" } });
   expect(invalid.isError).toBe(true);
   expect(invalid.structuredContent).toMatchObject({ code: "INVALID_REQUEST" });
+});
+
+it("polls status without creating a new review deck and keeps the original cursor usable", async () => {
+  const { client, store } = await fixture();
+  for (let index = 0; index < 60; index++) store.saveNote({
+    inputLanguage: "target", originalExpression: `Poll ${index}`, polishedExpression: `Poll ${index}`,
+    corrections: [], patterns: [], examples: [],
+  });
+  const args = { order: "review", limit: 50 };
+  const first = (await client.callTool({ name: "get_learning_dashboard_data", arguments: args })).structuredContent as { notes: { id: string }[]; notesPage: { nextCursor: string } };
+  store.markReviewed({ id: first.notes[0]!.id, expectedVersion: 0, requestId: crypto.randomUUID() });
+  const added = store.saveNote({ inputLanguage: "target", originalExpression: "New card", polishedExpression: "New card", corrections: [], patterns: [], examples: [] });
+  store.updateProfile({ targetLanguage: "French" });
+  const readDeck = vi.spyOn(store, "getDashboardData");
+  for (let index = 0; index < 3; index++) {
+    const status = await client.callTool({ name: "get_learning_dashboard_status", arguments: {} });
+    expect(status.isError).not.toBe(true);
+    expect(status.structuredContent).toMatchObject({ profile: { targetLanguage: "French" }, progress: { totalNotes: 61 }, sync: { enabled: false } });
+    expect(Object.keys(status.structuredContent!)).toEqual(["profile", "progress", "sync"]);
+    expect(JSON.stringify(status.structuredContent)).not.toContain("token");
+  }
+  expect(readDeck).not.toHaveBeenCalled();
+  const { tools } = await client.listTools();
+  expect(tools.find((tool) => tool.name === "get_learning_dashboard_status")).toMatchObject({
+    _meta: { ui: { visibility: ["app"] } }, annotations: { readOnlyHint: true, openWorldHint: false },
+  });
+  const last = (await client.callTool({ name: "get_learning_dashboard_data", arguments: { ...args, cursor: first.notesPage.nextCursor } })).structuredContent as { notes: { id: string }[] };
+  expect(last.notes).toHaveLength(10);
+  expect(new Set([...first.notes, ...last.notes].map((note) => note.id)).size).toBe(60);
+  expect(last.notes.map((note) => note.id)).not.toContain(added.id);
 });

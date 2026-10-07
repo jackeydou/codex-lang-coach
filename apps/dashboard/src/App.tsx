@@ -23,6 +23,7 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { createDashboardApi, type DashboardApi, type LearningDashboardClient, loadDashboardRuntime, UnauthorizedError } from "@/dashboard-api"
 import { ReviewError } from "@language-coach/core/review"
 import { applyReview, mergeNotes, preserveReviews } from "@/review-state"
+import { useDashboardStatusPolling } from "@/hooks/use-dashboard-status-polling"
 import { useIsMobile } from "@/hooks/use-mobile"
 
 function LoadingDashboard() {
@@ -792,19 +793,6 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
   }, [embedded])
 
   useEffect(() => {
-    if (!embedded) return
-    const refresh = () => { if (document.visibilityState === "visible") void load(embedded.client) }
-    const timer = window.setInterval(refresh, 15_000)
-    window.addEventListener("focus", refresh)
-    document.addEventListener("visibilitychange", refresh)
-    return () => {
-      window.clearInterval(timer)
-      window.removeEventListener("focus", refresh)
-      document.removeEventListener("visibilitychange", refresh)
-    }
-  }, [embedded])
-
-  useEffect(() => {
     if (embedded || runtime?.mode !== "local" || (!settingsPage && !data?.sync?.enabled) || auth) return
     let active = true
 
@@ -828,27 +816,14 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
     return () => { active = false }
   }, [auth, data?.sync?.enabled, runtime?.mode, settingsPage])
 
-  useEffect(() => {
-    if (!api || data?.sync?.state !== "syncing") return
-    let cancelled = false
-    let timer: number | undefined
-
-    async function pollSync() {
-      try {
-        const next = await api!.getDashboard()
-        if (!cancelled) setData((current) => current ? { ...current, sync: next.sync, progress: next.progress } : current)
-      } catch (error) {
-        if (!cancelled) setSyncError(error instanceof Error ? error.message : "Sync status could not be loaded.")
-      }
-      if (!cancelled) timer = window.setTimeout(() => { void pollSync() }, 750)
-    }
-
-    timer = window.setTimeout(() => { void pollSync() }, 750)
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [api, data?.sync?.state])
+  useDashboardStatusPolling({
+    client: api, embedded: Boolean(embedded), syncing: data?.sync?.state === "syncing",
+    onStatus: (status) => setData((current) => current ? {
+      ...current, progress: status.progress, sync: status.sync,
+      profile: status.profile.updatedAt >= current.profile.updatedAt ? status.profile : current.profile,
+    } : current),
+    onError: (error) => setSyncError(error instanceof Error ? error.message : "Dashboard status could not be loaded."),
+  })
 
   function setSyncError(message: string) {
     setData((current) => current ? {

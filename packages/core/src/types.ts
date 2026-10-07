@@ -102,6 +102,8 @@ export interface DashboardData {
 
 export type NotesOrder = "review" | "recent";
 
+export type DashboardStatus = Pick<DashboardData, "profile" | "progress" | "sync">;
+
 export interface ReviewState {
   stage: number;
   reviewCount: number;
