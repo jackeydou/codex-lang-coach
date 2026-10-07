@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 
 const root = resolve("dist/language-coach-dev-marketplace");
 const plugin = join(root, "plugins/language-coach-dev");
+const bareNode = process.argv.includes("--bare-node");
 await rm(plugin, { recursive: true, force: true });
 await cp(resolve("dist/language-coach"), plugin, { recursive: true });
 const data = resolve(".dev/language-coach");
@@ -28,7 +29,11 @@ for (const file of [".mcp.json"]) {
   const path = join(plugin, file);
   const config = JSON.parse(await readFile(path, "utf8"));
   const original = config.mcpServers.languageCoach;
-  config.mcpServers = { languageCoachDev: { ...original, command: process.execPath, args: [join(plugin, "mcp/server.mjs")], env } };
+  config.mcpServers = { languageCoachDev: { ...original,
+    command: bareNode ? "node" : process.execPath,
+    args: bareNode ? ["./mcp/server.mjs"] : [join(plugin, "mcp/server.mjs")],
+    env,
+  } };
   await writeFile(path, JSON.stringify(config, null, 2) + "\n");
 }
 const hooksPath = join(plugin, "hooks/hooks.json");
@@ -37,7 +42,9 @@ const quote = (value) => "'" + value.replaceAll("'", "'\\''") + "'";
 for (const groups of Object.values(hooks.hooks)) for (const group of groups) for (const hook of group.hooks) {
   if (!hook.command.includes("user-prompt-submit")) throw new Error("Unsupported development hook: " + hook.command);
   const script = "user-prompt-submit.mjs";
-  hook.command = `/usr/bin/env ${Object.entries(env).map(([key, value]) => `${key}=${quote(value)}`).join(" ")} ${quote(process.execPath)} ${quote(join(plugin, "hooks", script))}`;
+  const runtime = bareNode ? "node" : quote(process.execPath);
+  const scriptPath = bareNode ? `"\${PLUGIN_ROOT}/hooks/${script}"` : quote(join(plugin, "hooks", script));
+  hook.command = `/usr/bin/env ${Object.entries(env).map(([key, value]) => `${key}=${quote(value)}`).join(" ")} ${runtime} ${scriptPath}`;
 }
 await writeFile(hooksPath, JSON.stringify(hooks, null, 2) + "\n");
 const skillPath = join(plugin, "skills/language-coach/SKILL.md");
