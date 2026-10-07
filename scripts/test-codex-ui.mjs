@@ -2,7 +2,7 @@
 // Exercise the installed plugin through Codex's actual app-server protocol.
 // All writes go to a disposable database, and no model turn is started.
 import { spawn, execFileSync } from "node:child_process";
-import { cp, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -10,6 +10,8 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { build } from "esbuild";
 
+// Review-only mode validates the compiled dashboard without requiring installed development hooks.
+const reviewOnly = process.argv.includes("--review-only");
 const directory = await mkdtemp(join(tmpdir(), "language-coach-codex-ui-"));
 await cp(resolve("dist/language-coach"), join(directory, "plugin"), { recursive: true });
 const marketplace = JSON.parse(execFileSync("codex", ["plugin", "marketplace", "list", "--json"], { encoding: "utf8" })).marketplaces.find((item) => item.name === "language-coach-dev-local");
@@ -55,8 +57,8 @@ try {
   console.log(JSON.stringify({ stage: "plugin", mcpServers: plugin.mcpServers, skills: plugin.skills.map((skill) => skill.name) }));
   const hookInventory = await request("hooks/list", { cwd: resolve(".") });
   const devHooks = hookInventory.data.flatMap((entry) => entry.hooks).filter((hook) => hook.pluginId === "language-coach-dev@language-coach-dev-local");
-  assert(devHooks.some((hook) => hook.eventName === "userPromptSubmit" || hook.event === "userPromptSubmit"), "Development prompt hook is missing.");
-  assert(!devHooks.some((hook) => hook.eventName === "stop" || hook.event === "stop"), "Stop hook must not be registered.");
+  if (!reviewOnly) assert(devHooks.some((hook) => hook.eventName === "userPromptSubmit" || hook.event === "userPromptSubmit"), "Development prompt hook is missing.");
+  if (!reviewOnly) assert(!devHooks.some((hook) => hook.eventName === "stop" || hook.event === "stop"), "Stop hook must not be registered.");
   console.log(JSON.stringify({ stage: "hooks", hooks: devHooks.map(({ eventName, event, enabled }) => ({ eventName, event, enabled })) }));
   const { thread } = await request("thread/start", { cwd: resolve("."), ephemeral: true, approvalPolicy: "never", sandbox: "read-only" });
   const status = await request("mcpServerStatus/list", { threadId: thread.id, serverName, detail: "full", limit: 100 });
@@ -82,11 +84,27 @@ try {
   const snapshot = await call("get_learning_dashboard_data");
   assert.equal(snapshot.structuredContent.profile.targetLanguage, "French");
   assert.equal(snapshot.structuredContent.notes.length, 1);
+  assert.equal(snapshot.structuredContent.capabilities.reviewScheduling, true);
+  const reviewArgs = { id: saved.structuredContent.id, requestId: crypto.randomUUID(), expectedVersion: 0 };
+  const reviewed = await call("mark_learning_note_reviewed", reviewArgs);
+  assert(!reviewed.isError);
+  assert.equal(reviewed.structuredContent.review.stage, 1);
+  const retried = await call("mark_learning_note_reviewed", reviewArgs);
+  assert.deepEqual(retried.structuredContent, reviewed.structuredContent);
+  const reviewSnapshot = await call("get_learning_dashboard_data", { order: "review" });
+  assert.equal(reviewSnapshot.structuredContent.notes[0].review.reviewCount, 1);
+  assert.equal(reviewSnapshot.structuredContent.reviewSummary.scheduled, 1);
+  const dashboardStatus = await call("get_learning_dashboard_status");
+  assert(!dashboardStatus.isError);
+  assert.deepEqual(Object.keys(dashboardStatus.structuredContent).sort(), ["profile", "progress", "sync"]);
+  assert.equal(dashboardStatus.structuredContent.profile.targetLanguage, "French");
+  assert.equal(dashboardStatus.structuredContent.progress.totalNotes, 1);
   const deleted = await call("delete_learning_note", { id: saved.structuredContent.id });
   assert.equal(deleted.structuredContent.deleted, true);
   const empty = await call("get_learning_dashboard_data");
   assert.equal(empty.structuredContent.notes.length, 0);
-  const report = { codexVersion: execFileSync("codex", ["--version"], { encoding: "utf8" }).trim(), pluginVersion: plugin.summary.localVersion, server: server.name, toolMetadata: tool._meta, resourceLoaded: true, settingsUpdated: true, noteSavedAndDeleted: true, isolatedDatabase: true, nativeRendering: "Not verified by this protocol test" };
+  const builtManifest = JSON.parse(await readFile(join(directory, "plugin/.codex-plugin/plugin.json"), "utf8"));
+  const report = { codexVersion: execFileSync("codex", ["--version"], { encoding: "utf8" }).trim(), pluginVersion: builtManifest.version, installedDevelopmentPluginVersion: plugin.summary.localVersion, server: server.name, toolMetadata: tool._meta, resourceLoaded: true, settingsUpdated: true, noteSavedAndDeleted: true, isolatedDatabase: true, reviewRecordedAndDeduplicated: true, statusWithoutDeck: true, developmentHooksVerified: !reviewOnly, nativeRendering: "Not verified by this protocol test" };
   await writeFile(resolve("dist/codex-ui-test.json"), `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report, null, 2));
   if (process.argv.includes("--serve")) {
@@ -120,7 +138,7 @@ try {
       bundle: true, write: false, format: "esm", platform: "browser",
     });
     const audit = [];
-    const allowed = new Set(["get_learning_dashboard_data", "update_language_profile", "delete_learning_note"]);
+    const allowed = new Set(["get_learning_dashboard_data", "get_learning_dashboard_status", "update_language_profile", "delete_learning_note", "mark_learning_note_reviewed"]);
     const http = createServer(async (req, res) => {
       try {
         if (req.url === "/host.js") { res.setHeader("content-type", "text/javascript"); res.end(bundle.outputFiles[0].text); return; }

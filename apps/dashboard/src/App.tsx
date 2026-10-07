@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from "react"
-import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, LearningNote, SyncStatus } from "@language-coach/core"
+import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, SyncStatus, DashboardNote, NotesOrder, MarkReviewedInput } from "@language-coach/core"
 import { ActivityIcon, ArrowLeftIcon, ArrowRightIcon, BookOpenCheckIcon, CheckIcon, ChevronRightIcon, CloudIcon, FlameIcon, LayersIcon, LaptopIcon, LightbulbIcon, LogInIcon, Repeat2Icon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 
@@ -19,6 +19,9 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { createDashboardApi, type DashboardApi, type LearningDashboardClient, loadDashboardRuntime, UnauthorizedError } from "@/dashboard-api"
+import { ReviewError } from "@language-coach/core/review"
+import { applyReview, mergeNotes, preserveReviews } from "@/review-state"
+import { useDashboardStatusPolling } from "@/hooks/use-dashboard-status-polling"
 import { resolveDashboardRoute, type DashboardPage } from "@/dashboard-route"
 
 function LoadingDashboard() {
@@ -119,17 +122,25 @@ function RepeatPatterns({ patterns }: { patterns: DashboardData["progress"]["rec
   )
 }
 
-function FlashcardDeck({ notes, totalNotes, hasMore, loadingMore, onLoadMore, onDelete }: {
-  notes: LearningNote[]
+function FlashcardDeck({ notes, totalNotes, hasMore, loadingMore, onLoadMore, onDelete, onReview }: {
+  notes: DashboardNote[]
   totalNotes: number
   hasMore: boolean
   loadingMore: boolean
   onLoadMore: () => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onReview?: (id: string) => Promise<void>
 }) {
-  const [page, setPage] = useState(0)
+  const [activeNoteId, setActiveNoteId] = useState<string>()
+  const previousPage = useRef(0)
+  const selectedIndex = notes.findIndex((note) => note.id === activeNoteId)
+  const page = selectedIndex >= 0 ? selectedIndex : Math.min(previousPage.current, Math.max(0, notes.length - 1))
+  useEffect(() => {
+    previousPage.current = page
+    if (notes[page]?.id !== activeNoteId) setActiveNoteId(notes[page]?.id)
+  }, [notes, page, activeNoteId])
   const [direction, setDirection] = useState<"up" | "down">("up")
-  const [outgoingNote, setOutgoingNote] = useState<LearningNote>()
+  const [outgoingNote, setOutgoingNote] = useState<DashboardNote>()
   const pointerStart = useRef<number | undefined>(undefined)
   const touchStart = useRef<{ y: number; atTop: boolean; atBottom: boolean } | undefined>(undefined)
   const wheelDistance = useRef(0)
@@ -137,10 +148,6 @@ function FlashcardDeck({ notes, totalNotes, hasMore, loadingMore, onLoadMore, on
   const wheelStartedAtBoundary = useRef(false)
   const wheelSwitchedCard = useRef(false)
   const wheelGestureEndTimer = useRef<number | undefined>(undefined)
-
-  useEffect(() => {
-    setPage((current) => Math.min(current, Math.max(0, notes.length - 1)))
-  }, [notes.length])
 
   useEffect(() => {
     if (page >= notes.length - 2 && hasMore && !loadingMore) void onLoadMore()
@@ -165,7 +172,7 @@ function FlashcardDeck({ notes, totalNotes, hasMore, loadingMore, onLoadMore, on
 
       setDirection(forward ? "up" : "down")
       setOutgoingNote(notes[page])
-      setPage(nextPage)
+      setActiveNoteId(notes[nextPage]?.id)
     }
 
     window.addEventListener("keydown", handleGlobalKeyboard)
@@ -181,7 +188,7 @@ function FlashcardDeck({ notes, totalNotes, hasMore, loadingMore, onLoadMore, on
     if (clampedPage === page) return
     setDirection(clampedPage > page ? "up" : "down")
     setOutgoingNote(activeNote)
-    setPage(clampedPage)
+    setActiveNoteId(notes[clampedPage]?.id)
   }
 
   function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
@@ -300,7 +307,7 @@ function FlashcardDeck({ notes, totalNotes, hasMore, loadingMore, onLoadMore, on
             </div>
           )}
           <div key={activeNote.id} className="deck-active-card" data-direction={direction}>
-            <NoteFlashcard note={activeNote} onDelete={onDelete} />
+            <NoteFlashcard note={activeNote} onDelete={onDelete} onReview={onReview} />
           </div>
         </div>
 
@@ -531,19 +538,41 @@ function PageHeader({ title, description, count }: { title: string; description?
   )
 }
 
-export function FlashcardsPage({ data, loadingMore, onLoadMore, onDelete }: {
+export function FlashcardsPage({ data, loadingMore, onLoadMore, onDelete, onReview, order = "review", onOrderChange, onRefresh, refreshing = false }: {
   data: DashboardData
   loadingMore: boolean
   onLoadMore: () => Promise<void>
   onDelete: (id: string) => Promise<void>
+  onReview?: (id: string) => Promise<void>
+  order?: NotesOrder
+  onOrderChange?: (order: NotesOrder) => void
+  onRefresh?: () => void
+  refreshing?: boolean
 }) {
   return (
     <div className="dashboard-page flashcards-page" id="main-content" tabIndex={-1}>
       <PageHeader title="Flash cards" count={`${data.progress.totalNotes} notes`} />
       <section className="flashcard-section" aria-label="Language note flashcards">
+        {data.capabilities?.reviewScheduling && (
+          <div className="review-toolbar">
+            <div>
+              <label className="sr-only" htmlFor="notes-order">Card order</label>
+              <select id="notes-order" value={order} onChange={(event) => onOrderChange?.(event.target.value as NotesOrder)} disabled={refreshing || !onOrderChange}>
+                <option value="review">Review first</option>
+                <option value="recent">Latest notes</option>
+              </select>
+              <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing || !onRefresh}>{refreshing ? "Refreshing…" : "Refresh order"}</Button>
+            </div>
+            {data.reviewSummary && <p aria-live="polite">{data.reviewSummary.due + data.reviewSummary.new === 0
+              ? "All reviews in this round are complete."
+              : `${data.reviewSummary.due} due · ${data.reviewSummary.new} not studied`}</p>}
+          </div>
+        )}
         {data.notes.length ? (
-          <FlashcardDeck notes={data.notes} totalNotes={data.progress.totalNotes} hasMore={Boolean(data.notesPage?.hasMore)} loadingMore={loadingMore}
-            onLoadMore={onLoadMore} onDelete={onDelete} />
+          <FlashcardDeck notes={data.notes} totalNotes={data.reviewSummary
+            ? data.reviewSummary.due + data.reviewSummary.new + data.reviewSummary.scheduled : data.progress.totalNotes}
+            hasMore={Boolean(data.notesPage?.hasMore)} loadingMore={loadingMore}
+            onLoadMore={onLoadMore} onDelete={onDelete} onReview={onReview} />
         ) : (
           <Card className="empty-notes">
             <CardHeader><CardTitle>No notes yet</CardTitle><CardDescription>Useful corrections and reusable language patterns will appear here as flashcards.</CardDescription></CardHeader>
@@ -646,22 +675,43 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
   const [saving, setSaving] = useState(false)
   const [syncChanging, setSyncChanging] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [paginationFailed, setPaginationFailed] = useState(false)
   const [authRequired, setAuthRequired] = useState(false)
+  const [order, setOrder] = useState<NotesOrder>("review")
+  const orderRef = useRef<NotesOrder>("review")
+  const generationRef = useRef(0)
+  const loadingMoreRef = useRef(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [reviewBusy, setReviewBusy] = useState(0)
+  const reviewRequests = useRef(new Map<string, MarkReviewedInput>())
+  const reviewInFlight = useRef(new Map<string, Promise<void>>())
   const webApi = useMemo(() => !embedded && runtime ? createDashboardApi(runtime, accessToken || undefined) : undefined, [accessToken, runtime, embedded])
   const api: LearningDashboardClient | undefined = embedded?.client || webApi
 
-  async function load(client = api) {
+  async function load(client = api, nextOrder = orderRef.current) {
     if (!client) return
+    const generation = ++generationRef.current
+    loadingMoreRef.current = false
+    setLoadingMore(false)
+    setRefreshing(true)
     try {
       setError("")
-      setData(await client.getDashboard())
+      const next = await client.getDashboard(undefined, nextOrder)
+      if (generation !== generationRef.current) return
+      orderRef.current = next.capabilities?.reviewScheduling ? nextOrder : "recent"
+      setOrder(orderRef.current)
+      setPaginationFailed(false)
+      setData((current) => preserveReviews(current, next))
     } catch (loadError) {
+      if (generation !== generationRef.current) return
       if (loadError instanceof UnauthorizedError) {
         setAuthRequired(true)
         setData(undefined)
         return
       }
       setError(loadError instanceof Error ? loadError.message : "The dashboard could not be loaded.")
+    } finally {
+      if (generation === generationRef.current) setRefreshing(false)
     }
   }
 
@@ -692,19 +742,6 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
   }, [embedded])
 
   useEffect(() => {
-    if (!embedded) return
-    const refresh = () => { if (document.visibilityState === "visible") void load(embedded.client) }
-    const timer = window.setInterval(refresh, 15_000)
-    window.addEventListener("focus", refresh)
-    document.addEventListener("visibilitychange", refresh)
-    return () => {
-      window.clearInterval(timer)
-      window.removeEventListener("focus", refresh)
-      document.removeEventListener("visibilitychange", refresh)
-    }
-  }, [embedded])
-
-  useEffect(() => {
     if (embedded || runtime?.mode !== "local" || (!settingsPage && !data?.sync?.enabled) || auth) return
     let active = true
 
@@ -728,22 +765,14 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
     return () => { active = false }
   }, [auth, data?.sync?.enabled, runtime?.mode, settingsPage])
 
-  useEffect(() => {
-    if (!api || data?.sync?.state !== "syncing") return
-    let cancelled = false
-    let timer: number | undefined
-
-    async function pollSync() {
-      await load(api)
-      if (!cancelled) timer = window.setTimeout(() => { void pollSync() }, 750)
-    }
-
-    timer = window.setTimeout(() => { void pollSync() }, 750)
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [api, data?.sync?.state])
+  useDashboardStatusPolling({
+    client: api, embedded: Boolean(embedded), syncing: data?.sync?.state === "syncing",
+    onStatus: (status) => setData((current) => current ? {
+      ...current, progress: status.progress, sync: status.sync,
+      profile: status.profile.updatedAt >= current.profile.updatedAt ? status.profile : current.profile,
+    } : current),
+    onError: (error) => setSyncError(error instanceof Error ? error.message : "Dashboard status could not be loaded."),
+  })
 
   function setSyncError(message: string) {
     setData((current) => current ? {
@@ -813,20 +842,56 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
     await load()
   }
 
+  async function markReviewed(id: string): Promise<void> {
+    if (!api) throw new Error("The dashboard is not connected.")
+    const existing = reviewInFlight.current.get(id)
+    if (existing) return existing
+    const note = data?.notes.find((item) => item.id === id)
+    if (!note?.review) throw new Error("This card has no review state. Refresh the dashboard.")
+    const input = reviewRequests.current.get(id) ?? { id, requestId: crypto.randomUUID(), expectedVersion: note.review.version }
+    reviewRequests.current.set(id, input)
+    setReviewBusy((count) => count + 1)
+    const operation = (async () => {
+      try {
+        const result = await api.markReviewed(input)
+        setData((current) => current ? applyReview(current, result) : current)
+        reviewRequests.current.delete(id)
+      } catch (error) {
+        if (error instanceof ReviewError) {
+          reviewRequests.current.delete(id)
+          if (error.review) setData((current) => current ? applyReview(current, { id, review: error.review! }) : current)
+        }
+        throw error
+      } finally {
+        reviewInFlight.current.delete(id)
+        setReviewBusy((count) => count - 1)
+      }
+    })()
+    reviewInFlight.current.set(id, operation)
+    return operation
+  }
+
   async function loadMoreNotes() {
     const cursor = data?.notesPage?.nextCursor
-    if (!api || !cursor || loadingMore) return
+    if (!api || !cursor || loadingMoreRef.current || refreshing) return
+    const generation = generationRef.current
+    loadingMoreRef.current = true
     setLoadingMore(true)
     try {
-      const next = await api.getDashboard(cursor)
-      setData((current) => {
-        if (!current) return next
-        const notes = new Map(current.notes.map((note) => [note.id, note]))
-        for (const note of next.notes) notes.set(note.id, note)
-        return { ...current, notes: [...notes.values()], notesPage: next.notesPage, progress: next.progress }
-      })
+      const next = await api.getDashboard(cursor, orderRef.current)
+      if (generation !== generationRef.current) return
+      setData((current) => current ? {
+        ...current, notes: mergeNotes(current.notes, next.notes), notesPage: next.notesPage, progress: next.progress,
+      } : current)
+    } catch (error) {
+      if (generation !== generationRef.current) return
+      if (error instanceof ReviewError && error.code === "SESSION_EXPIRED") await load()
+      else { setPaginationFailed(true); setError(error instanceof Error ? error.message : "More notes could not be loaded.") }
     } finally {
-      setLoadingMore(false)
+      if (generation === generationRef.current) {
+        loadingMoreRef.current = false
+        setLoadingMore(false)
+      }
     }
   }
 
@@ -854,7 +919,9 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
           ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} openStandalone={embedded?.openStandalone} />
           : page === "activity" ? <ActivityPage data={data} />
           : page === "patterns" ? <PatternsPage data={data} />
-          : <FlashcardsPage data={data} loadingMore={loadingMore} onLoadMore={loadMoreNotes} onDelete={deleteNote} />}
+          : <FlashcardsPage data={data} loadingMore={loadingMore || refreshing || paginationFailed} onLoadMore={loadMoreNotes} onDelete={deleteNote}
+              onReview={data.capabilities?.reviewScheduling ? markReviewed : undefined} order={order}
+              onOrderChange={(next) => { void load(api, next) }} onRefresh={() => { void load() }} refreshing={refreshing || reviewBusy > 0} />}
       </DashboardShell>
     </TooltipProvider>
   )

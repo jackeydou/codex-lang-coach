@@ -1,18 +1,40 @@
-import { useState } from "react"
-import type { LearningNote } from "@language-coach/core"
-import { ArrowLeftRightIcon, LightbulbIcon, Trash2Icon } from "lucide-react"
+import { useEffect, useState } from "react"
+import type { DashboardNote } from "@language-coach/core"
+import { ArrowLeftRightIcon, CheckIcon, LightbulbIcon, Trash2Icon } from "lucide-react"
+
+import { isReviewDue } from "@language-coach/core/review"
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 
-export function NoteFlashcard({ note, onDelete }: {
-  note: LearningNote
+export function NoteFlashcard({ note, onDelete, onReview }: {
+  note: DashboardNote
   onDelete: (id: string) => Promise<void>
+  onReview?: (id: string) => Promise<void>
 }) {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState("")
+
+  const [reviewing, setReviewing] = useState(false)
+  const [reviewError, setReviewError] = useState("")
+  const [clock, setClock] = useState(Date.now())
+  useEffect(() => {
+    if (!onReview || !note.review?.nextReviewAt) return
+    const timer = window.setInterval(() => setClock(Date.now()), 15_000)
+    return () => window.clearInterval(timer)
+  }, [onReview, note.review?.nextReviewAt])
+  const due = note.review ? isReviewDue(note.review, clock) : true
+
+  async function markReviewed() {
+    if (!onReview || reviewing) return
+    setReviewing(true)
+    setReviewError("")
+    try { await onReview(note.id); setClock(Date.now()) }
+    catch (error) { setReviewError(error instanceof Error ? error.message : "The review could not be saved.") }
+    finally { setReviewing(false) }
+  }
 
   async function deleteNote() {
     setDeleting(true)
@@ -98,6 +120,19 @@ export function NoteFlashcard({ note, onDelete }: {
           )}
         </div>
       </CardContent>
+      {onReview && note.review && (
+        <div className="flashcard-review-action" onWheel={(event) => event.stopPropagation()}>
+          <div className="flashcard-review-copy" aria-live="polite">
+            <strong>{note.review.stage === 0 ? "Not studied" : due ? "Due for review" : "Reviewed"}</strong>
+            {note.review.nextReviewAt && <span>Next review: <time dateTime={note.review.nextReviewAt}>{new Date(note.review.nextReviewAt).toLocaleString()}</time></span>}
+            <span className="review-device-note">Review progress stays on this device.</span>
+            {reviewError && <p role="alert" className="text-destructive">{reviewError}</p>}
+          </div>
+          <Button onClick={() => void markReviewed()} disabled={reviewing || !due}>
+            <CheckIcon />{reviewing ? "Saving…" : due ? "Mark reviewed" : "Reviewed"}
+          </Button>
+        </div>
+      )}
     </Card>
   )
 }

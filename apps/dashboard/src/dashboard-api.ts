@@ -1,11 +1,15 @@
-import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, RemoteSyncConfig } from "@language-coach/core"
+import type { DashboardData, DashboardStatus, DashboardRuntimeConfig, LanguageProfile, RemoteSyncConfig, NotesOrder, MarkReviewedInput, MarkReviewedResult } from "@language-coach/core"
+
+import { ReviewError } from "@language-coach/core/review"
 
 type ProfileUpdate = Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">
 
 export interface LearningDashboardClient {
-  getDashboard(cursor?: string): Promise<DashboardData>
+  getDashboard(cursor?: string, order?: NotesOrder): Promise<DashboardData>
+  getDashboardStatus(): Promise<DashboardStatus>
   updateProfile(profile: ProfileUpdate): Promise<LanguageProfile>
   deleteNote(id: string): Promise<{ deleted: boolean }>
+  markReviewed(input: MarkReviewedInput): Promise<MarkReviewedResult>
 }
 
 export class UnauthorizedError extends Error {
@@ -33,7 +37,10 @@ async function requestJson<T>(url: string, options: RequestInit = {}, token?: st
 
   if (response.status === 401) throw new UnauthorizedError()
   if (!response.ok) {
-    const body = await response.json().catch(() => ({})) as { error?: string }
+    const body = await response.json().catch(() => ({})) as { error?: string; code?: string; review?: MarkReviewedResult["review"] }
+    if (body.code && ["INVALID_REQUEST", "NOT_FOUND", "VERSION_CONFLICT", "NOT_DUE", "SESSION_EXPIRED"].includes(body.code)) {
+      throw new ReviewError(body.code as ReviewError["code"], body.error || "Review request failed.", body.review)
+    }
     throw new Error(body.error || `Request failed with status ${response.status}.`)
   }
   return response.json() as Promise<T>
@@ -66,10 +73,20 @@ export class DashboardApi {
     return this.runtime.mode === "remote" ? this.accessToken : undefined
   }
 
-  getDashboard(cursor?: string): Promise<DashboardData> {
+  getDashboard(cursor?: string, order?: NotesOrder): Promise<DashboardData> {
     const params = new URLSearchParams({ limit: "50" })
     if (cursor) params.set("cursor", cursor)
+    if (order) params.set("order", order)
     return requestJson<DashboardData>(`/api/dashboard?${params}`, {}, this.runtimeToken())
+  }
+
+  async getDashboardStatus(): Promise<DashboardStatus> {
+    // Remote dashboards do not yet have review sessions or a status endpoint.
+    if (this.runtime.mode === "remote") {
+      const { profile, progress, sync } = await this.getDashboard(undefined, "recent")
+      return { profile, progress, sync }
+    }
+    return requestJson<DashboardStatus>("/api/dashboard/status", {}, this.runtimeToken())
   }
 
   updateProfile(profile: ProfileUpdate): Promise<LanguageProfile> {
@@ -82,6 +99,12 @@ export class DashboardApi {
 
   deleteNote(id: string): Promise<{ deleted: boolean }> {
     return requestJson(`/api/notes/${encodeURIComponent(id)}`, { method: "DELETE" }, this.runtimeToken())
+  }
+
+  markReviewed(input: MarkReviewedInput): Promise<MarkReviewedResult> {
+    return requestJson(`/api/notes/${encodeURIComponent(input.id)}/review`, {
+      method: "POST", body: JSON.stringify({ requestId: input.requestId, expectedVersion: input.expectedVersion }),
+    }, this.runtimeToken())
   }
 
   async enableLocalSync(sessionToken: string): Promise<void> {

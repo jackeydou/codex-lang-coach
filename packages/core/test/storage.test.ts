@@ -202,6 +202,7 @@ describe("SqliteLearningStore", () => {
     expect(snapshot.throughRevision).toBeGreaterThan(0);
     expect(snapshot.profile).toBeDefined();
     expect(snapshot.notes).toHaveLength(1);
+    expect(store.getDashboardData(50, undefined, "review").notes[0]?.review).toMatchObject({ stage: 0, reviewCount: 0 });
     store.markSyncCheckpoint("https://sync.example", "legacy-user", snapshot.throughRevision, "2026-09-01T00:00:00.000Z");
     expect(store.getSyncSnapshot("https://sync.example", "legacy-user").notes).toHaveLength(0);
     store.close();

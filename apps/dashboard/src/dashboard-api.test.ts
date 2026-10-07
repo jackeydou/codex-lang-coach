@@ -137,3 +137,36 @@ describe("DashboardApi", () => {
     await expect(createDashboardApi(runtime).getDashboard()).rejects.toBeInstanceOf(UnauthorizedError)
   })
 })
+
+it("posts an explicit review request and preserves structured conflict details", async () => {
+  const { ReviewError } = await import("@language-coach/core/review")
+  const client = createDashboardApi({ mode: "local", remoteUrl: "https://remote.example" })
+  const input = { id: "note/id", requestId: crypto.randomUUID(), expectedVersion: 0 }
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ id: input.id, review: { version: 1 } }))
+  await client.markReviewed(input)
+  expect(fetchMock).toHaveBeenCalledWith("/api/notes/note%2Fid/review", expect.objectContaining({
+    method: "POST", body: JSON.stringify({ requestId: input.requestId, expectedVersion: 0 }),
+  }))
+  fetchMock.mockResolvedValueOnce(json({ error: "Review session expired.", code: "SESSION_EXPIRED" }, 409))
+  await expect(client.getDashboard("cursor", "review")).rejects.toBeInstanceOf(ReviewError)
+  expect(fetchMock).toHaveBeenLastCalledWith("/api/dashboard?limit=50&cursor=cursor&order=review", expect.any(Object))
+})
+
+it("polls local status without requesting a review page or sending a bearer token", async () => {
+  const status = { profile: dashboard.profile, progress: dashboard.progress, sync: { enabled: false } }
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(status))
+  await expect(createDashboardApi({ mode: "local", remoteUrl: "https://remote.example" }, "unused").getDashboardStatus()).resolves.toEqual(status)
+  expect(fetchMock).toHaveBeenCalledWith("/api/dashboard/status", expect.objectContaining({
+    headers: expect.not.objectContaining({ authorization: expect.anything() }),
+  }))
+})
+
+it("uses the existing remote recent endpoint when polling remote status", async () => {
+  const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(dashboard))
+  await expect(createDashboardApi({ mode: "remote", remoteUrl: "https://remote.example" }, "session-jwt").getDashboardStatus()).resolves.toEqual({
+    profile: dashboard.profile, progress: dashboard.progress,
+  })
+  expect(fetchMock).toHaveBeenCalledWith("/api/dashboard?limit=50&order=recent", expect.objectContaining({
+    headers: expect.objectContaining({ authorization: "Bearer session-jwt" }),
+  }))
+})

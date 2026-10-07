@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import type { OpenAIUiResourceMetadata, OpenAIUiToolMetadata } from "@openai/mcp-extensions/server";
 import {
+  ReviewError,
   CORRECTION_CATEGORIES,
   EXAMPLE_CONTEXTS,
   INPUT_LANGUAGE_KINDS,
@@ -36,6 +37,11 @@ const exampleSchema = z.object({
   context: z.enum(EXAMPLE_CONTEXTS),
   text: z.string().min(1),
 });
+
+function reviewFailure(error: unknown) {
+  if (!(error instanceof ReviewError)) throw error;
+  return { ...result({ code: error.code, review: error.review }, error.message), isError: true };
+}
 
 function result(value: unknown, message?: string) {
   return {
@@ -91,12 +97,40 @@ export function createLanguageCoachMcpServer({
       inputSchema: {
         limit: z.number().int().min(1).max(100).default(50),
         cursor: z.string().optional(),
+        order: z.enum(["review", "recent"]).default("recent"),
       },
       annotations: { readOnlyHint: true, openWorldHint: false },
       _meta: { ui: { visibility: ["app"] } },
-    }, async ({ limit, cursor }) => {
+    }, async ({ limit, cursor, order }) => {
       const { enabled, state, lastSyncedAt, completedItems, totalItems } = remoteSync.status;
-      return result({ ...store.getDashboardData(limit, cursor), sync: { enabled, state, lastSyncedAt, completedItems, totalItems } });
+      try {
+        return result({ ...store.getDashboardData(limit, cursor, order), sync: { enabled, state, lastSyncedAt, completedItems, totalItems } });
+      } catch (error) { return reviewFailure(error); }
+    });
+
+    server.registerTool("get_learning_dashboard_status", {
+      title: "Get learning dashboard status",
+      description: "Read language settings, progress and sync status without reading or renewing a review deck.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, openWorldHint: false },
+      _meta: { ui: { visibility: ["app"] } },
+    }, async () => {
+      const { enabled, state, lastSyncedAt, completedItems, totalItems } = remoteSync.status;
+      return result({
+        profile: store.getProfile(), progress: store.getProgress(),
+        sync: { enabled, state, lastSyncedAt, completedItems, totalItems },
+      });
+    });
+
+    server.registerTool("mark_learning_note_reviewed", {
+      title: "Mark learning note reviewed",
+      description: "Record a review explicitly completed by the user in the dashboard. Review progress is stored on this device.",
+      inputSchema: { id: z.string().min(1).max(200), requestId: z.string().uuid(), expectedVersion: z.number().int().min(0) },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: { ui: { visibility: ["app"] } },
+    }, async (input) => {
+      try { return result(store.markReviewed(input)); }
+      catch (error) { return reviewFailure(error); }
     });
 
   }
