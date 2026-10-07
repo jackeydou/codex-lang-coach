@@ -54,3 +54,12 @@
 - `node scripts/test-codex-ui.mjs --review-only` 通过，真实 Codex CLI 0.154.0 app-server 可调用编译后的状态工具，返回设置、统计和同步信息，不返回笔记或游标。本次环境的 prompt hook 已启用，但该模式仍明确跳过 hook 断言。测试使用临时数据库，不验证原生 UI 渲染。
 
 本次未改动视觉布局，页面交互由上述 React 回归测试验证。
+
+
+## 合并最新主分支（2026-10-06）
+
+已合并 `origin/master` 的 `5f3d0c3`（新导航及嵌套路由修复）。保留 Flash cards、Repeat patterns、Activity、Settings 四个页面；将复习操作、排序及刷新接入 Flash cards，将复习样式移到 Dashboard 专用样式表并使用主题变量。卡片导航显示当前复习卡组总数，页面标题显示最新笔记统计；状态轮询不会把新笔记插入当前卡组。
+
+- `pnpm check`、`pnpm test`（79 项：Core 20、Dashboard 48、MCP 5、本地 HTTP 2、Worker 4）及 `pnpm build:plugin` 全部通过；Worker 仍仅执行 dry-run。
+- 编译产物再次通过 Codex app-server 协议验证。使用临时数据库的 MCP Apps 浏览器桥接页，确认复习反馈、暗色与窄屏控件、新导航的 Activity 页面可用，浏览器控制台无 error。此验证仍不证明原生 Codex 渲染器表现。
+- 60 张卡的组件回归继续通过：当前卡、卡组和游标保持稳定，笔记统计在状态轮询后更新。

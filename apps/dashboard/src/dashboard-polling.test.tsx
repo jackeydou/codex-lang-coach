@@ -86,8 +86,8 @@ it("preserves the active reviewed card and original pagination through embedded 
   expect(getDashboardStatus).toHaveBeenCalledTimes(3)
   expect(getDashboard).toHaveBeenCalledTimes(1)
   expect(activeExpression()).toBe(originalExpression)
-  expect(container.querySelector(".flashcard-deck-status")?.textContent).toContain("50")
-  expect(container.querySelector(".activity-heatmap")?.parentElement?.textContent).toContain("61")
+  expect(container.querySelector(".flashcard-deck-status")?.textContent).toContain("60")
+  expect(container.querySelector(".dashboard-page-count")?.textContent).toContain("61")
 
   // Reading past the first page must still use the initial session's cursor.
   for (let index = 0; index < 48; index++) await click('button[aria-label="Next card"]')
@@ -99,7 +99,7 @@ it("preserves the active reviewed card and original pagination through embedded 
   // Only the user's explicit refresh creates a new deck.
   await click(".review-toolbar button")
   expect(getDashboard.mock.calls.filter(([cursor]) => !cursor)).toEqual([[undefined, "review"], [undefined, "review"]])
-  expect(container.querySelector(".activity-heatmap")?.parentElement?.textContent).toContain("61")
+  expect(container.querySelector(".dashboard-page-count")?.textContent).toContain("61")
 })
 
 function Probe({ client, onStatus, onError, syncing = false }: {

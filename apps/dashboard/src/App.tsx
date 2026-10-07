@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from "react"
 import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, SyncStatus, DashboardNote, NotesOrder, MarkReviewedInput } from "@language-coach/core"
-import { ActivityIcon, ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, BookOpenCheckIcon, CheckIcon, CloudIcon, FlameIcon, HomeIcon, LaptopIcon, LogInIcon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
+import { ActivityIcon, ArrowLeftIcon, ArrowRightIcon, BookOpenCheckIcon, CheckIcon, ChevronRightIcon, CloudIcon, FlameIcon, LayersIcon, LaptopIcon, LightbulbIcon, LogInIcon, Repeat2Icon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
-import coachIcon from "../public/assets/language-coach-icon.png"
 
 import { AuthPage } from "@/AuthPage"
 import { initializeAuth, readAuthSession, type AuthClient, type AuthUser } from "@/auth-client"
@@ -11,12 +10,11 @@ import { LandingPage } from "@/LandingPage"
 import { LegalPage } from "@/LegalPage"
 import { NoteFlashcard } from "@/components/note-flashcard"
 import { Button } from "@/components/ui/button"
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Separator } from "@/components/ui/separator"
-import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -24,7 +22,7 @@ import { createDashboardApi, type DashboardApi, type LearningDashboardClient, lo
 import { ReviewError } from "@language-coach/core/review"
 import { applyReview, mergeNotes, preserveReviews } from "@/review-state"
 import { useDashboardStatusPolling } from "@/hooks/use-dashboard-status-polling"
-import { useIsMobile } from "@/hooks/use-mobile"
+import { resolveDashboardRoute, type DashboardPage } from "@/dashboard-route"
 
 function LoadingDashboard() {
   return (
@@ -39,14 +37,14 @@ function LoadingDashboard() {
 
 function MetricCard({ label, value, detail, icon: Icon }: { label: string; value: string | number; detail: string; icon: typeof ActivityIcon }) {
   return (
-    <Card size="sm">
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardAction><Icon className="metric-icon" /></CardAction>
-        <CardTitle className="text-3xl font-semibold tabular-nums">{value}</CardTitle>
-      </CardHeader>
-      <CardContent><p className="text-xs text-muted-foreground">{detail}</p></CardContent>
-    </Card>
+    <div className="activity-metric">
+      <Icon className="metric-icon" aria-hidden="true" />
+      <div>
+        <p>{label}</p>
+        <strong>{value}</strong>
+        <span>{detail}</span>
+      </div>
+    </div>
   )
 }
 
@@ -60,12 +58,12 @@ function ActivityHeatmap({ activity }: { activity: DashboardData["progress"]["ac
     <section className="insight-section" aria-labelledby="activity-heatmap-title">
       <div className="insight-heading">
         <div>
-          <p>Last 90 days</p>
           <h2 id="activity-heatmap-title">Practice activity</h2>
+          <p>Last 90 days</p>
         </div>
-        <strong>{activity.reduce((total, day) => total + day.count, 0)}</strong>
+        <span>{activity.reduce((total, day) => total + day.count, 0)} notes</span>
       </div>
-      <div className="activity-heatmap" role="img" aria-label="Learning notes submitted during the last 90 days">
+      <div className="activity-heatmap" style={{ gridTemplateColumns: `repeat(${Math.max(1, Math.ceil((leadingDays + activity.length) / 7))}, minmax(0, 1fr))` }} role="img" aria-label="Learning notes submitted during the last 90 days">
         {Array.from({ length: leadingDays }, (_, index) => <span key={`empty-${index}`} className="heatmap-cell heatmap-cell--empty" />)}
         {activity.map((day) => {
           const level = day.count === 0 ? 0 : Math.max(1, Math.ceil((day.count / maximum) * 4))
@@ -86,21 +84,19 @@ function RepeatPatterns({ patterns }: { patterns: DashboardData["progress"]["rec
 
   const visiblePatterns = patterns.slice(page * pageSize, (page + 1) * pageSize)
   return (
-    <section className="insight-section repeat-patterns" aria-labelledby="repeat-patterns-title">
-      <div className="insight-heading">
-        <div><p>Worth revisiting</p><h2 id="repeat-patterns-title">Repeat patterns</h2></div>
-        <span>{patterns.length}</span>
-      </div>
+    <section className="repeat-patterns" aria-label="Repeated expressions">
+      <div className="pattern-list-heading" aria-hidden="true"><span>Pattern</span><span>Meaning</span><span>Seen</span><span /></div>
       {visiblePatterns.length ? (
         <ol>
-          {visiblePatterns.map((pattern, index) => (
+          {visiblePatterns.map((pattern) => (
             <li key={pattern.pattern}>
               <Dialog>
                 <DialogTrigger asChild>
                   <button type="button" className="pattern-row" aria-label={`Open pattern: ${pattern.pattern}`}>
-                    <span>{String(page * pageSize + index + 1).padStart(2, "0")}</span>
-                    <div><strong>{pattern.pattern}</strong><p>{pattern.explanation}</p></div>
-                    <b>{pattern.count}×</b>
+                    <span className="pattern-name"><LightbulbIcon aria-hidden="true" /><strong>{pattern.pattern}</strong></span>
+                    <span className="pattern-meaning">{pattern.explanation}</span>
+                    <span className="pattern-frequency">{pattern.count}×</span>
+                    <ChevronRightIcon aria-hidden="true" />
                   </button>
                 </DialogTrigger>
                 <DialogContent className="pattern-dialog">
@@ -126,17 +122,9 @@ function RepeatPatterns({ patterns }: { patterns: DashboardData["progress"]["rec
   )
 }
 
-function LearningInsights({ progress }: { progress: DashboardData["progress"] }) {
-  return (
-    <aside className="learning-insights" aria-label="Learning insights">
-      <ActivityHeatmap activity={progress.activity90Days} />
-      <RepeatPatterns patterns={progress.recurringPatterns} />
-    </aside>
-  )
-}
-
-function FlashcardDeck({ notes, hasMore, loadingMore, onLoadMore, onDelete, onReview }: {
+function FlashcardDeck({ notes, totalNotes, hasMore, loadingMore, onLoadMore, onDelete, onReview }: {
   notes: DashboardNote[]
+  totalNotes: number
   hasMore: boolean
   loadingMore: boolean
   onLoadMore: () => Promise<void>
@@ -174,8 +162,8 @@ function FlashcardDeck({ notes, hasMore, loadingMore, onLoadMore, onDelete, onRe
       const target = event.target as HTMLElement | null
       if (target?.closest("input, textarea, select, [contenteditable='true'], [role='dialog']")) return
 
-      const forward = ["ArrowDown", "PageDown", "j", "J"].includes(event.key)
-      const backward = ["ArrowUp", "PageUp", "k", "K"].includes(event.key)
+      const forward = ["ArrowRight", "ArrowDown", "PageDown", "j", "J"].includes(event.key)
+      const backward = ["ArrowLeft", "ArrowUp", "PageUp", "k", "K"].includes(event.key)
       if (!forward && !backward) return
 
       const nextPage = Math.max(0, Math.min(notes.length - 1, page + (forward ? 1 : -1)))
@@ -302,8 +290,8 @@ function FlashcardDeck({ notes, hasMore, loadingMore, onLoadMore, onDelete, onRe
         <div
           className="flashcard-deck-stage"
           role="group"
-          aria-roledescription="vertical card viewer"
-          aria-label={`Card ${page + 1} of ${notes.length}. Swipe, scroll, or use the up and down arrow keys anywhere on the page to change cards.`}
+          aria-roledescription="card viewer"
+          aria-label={`Card ${page + 1} of ${totalNotes}. Swipe, scroll, or use arrow keys to change cards.`}
           onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
@@ -323,21 +311,17 @@ function FlashcardDeck({ notes, hasMore, loadingMore, onLoadMore, onDelete, onRe
           </div>
         </div>
 
-        <aside className="flashcard-controls" aria-label="Card navigation">
-          <div className="flashcard-deck-status" aria-live="polite">
-            <span><strong>{String(page + 1).padStart(2, "0")}</strong></span>
-            <span className="flashcard-status-rule" aria-hidden="true" />
-            <span>{String(notes.length).padStart(2, "0")}</span>
-          </div>
-          <div className="flashcard-arrow-buttons">
-            <Button variant="outline" size="icon" onClick={() => goTo(page - 1)} disabled={page === 0} aria-label="Previous card">
-              <ArrowUpIcon />
-            </Button>
-            <Button variant="outline" size="icon" onClick={() => goTo(page + 1)} disabled={page === notes.length - 1} aria-label="Next card">
-              <ArrowDownIcon />
-            </Button>
-          </div>
-        </aside>
+        <nav className="flashcard-controls" aria-label="Card navigation">
+          <Button variant="outline" onClick={() => goTo(page - 1)} disabled={page === 0} aria-label="Previous card">
+            <ArrowLeftIcon /> Previous
+          </Button>
+          <span className="flashcard-deck-status" aria-live="polite">
+            {String(page + 1).padStart(2, "0")} / {totalNotes}
+          </span>
+          <Button onClick={() => goTo(page + 1)} disabled={page === notes.length - 1} aria-label="Next card">
+            Next <ArrowRightIcon />
+          </Button>
+        </nav>
       </div>
     </div>
   )
@@ -499,155 +483,158 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
   )
 }
 
-function DashboardSidebarNavigation({ settingsPage, myNotesPage, insightsPage }: {
-  settingsPage: boolean
-  myNotesPage: boolean
-  insightsPage: boolean
-}) {
-  const { isMobile, setOpenMobile } = useSidebar()
-  const closeMobileSidebar = () => setOpenMobile(false)
+function DashboardSidebarNavigation({ page, footer = false }: { page: DashboardPage; footer?: boolean }) {
+  const { setOpenMobile } = useSidebar()
+  const destinations = [
+    { page: "flashcards", label: "Flash cards", to: "/dashboard", icon: LayersIcon },
+    { page: "patterns", label: "Repeat patterns", to: "/dashboard/patterns", icon: Repeat2Icon },
+    { page: "activity", label: "Activity", to: "/dashboard/activity", icon: ActivityIcon },
+    { page: "settings", label: "Settings", to: "/dashboard/settings", icon: Settings2Icon },
+  ] as const
 
   return (
     <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={!settingsPage && !myNotesPage && !insightsPage} tooltip="For You">
-          <Link to="/dashboard" onClick={closeMobileSidebar}><HomeIcon /><span>For You</span></Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-      <SidebarMenuItem>
-        <SidebarMenuButton asChild isActive={myNotesPage} tooltip="My Notes">
-          <Link to="/dashboard/notes" onClick={closeMobileSidebar}><BookOpenCheckIcon /><span>My Notes</span></Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-      {isMobile && !settingsPage && (
-        <SidebarMenuItem>
-          <SidebarMenuButton asChild isActive={insightsPage} tooltip="Insights">
-            <Link to="/dashboard/insights" onClick={closeMobileSidebar}>
-              <ActivityIcon /><span>Insights</span>
-            </Link>
+      {destinations.filter((destination) => footer ? destination.page === "settings" : destination.page !== "settings").map(({ page: destination, label, to, icon: Icon }) => (
+        <SidebarMenuItem key={destination}>
+          <SidebarMenuButton asChild isActive={page === destination} tooltip={label}>
+            <Link to={to} aria-current={page === destination ? "page" : undefined} onClick={() => setOpenMobile(false)}><Icon /><span>{label}</span></Link>
           </SidebarMenuButton>
         </SidebarMenuItem>
-      )}
+      ))}
     </SidebarMenu>
   )
 }
 
-function DashboardShell({ settingsPage, myNotesPage, insightsPage, user, children }: {
-  settingsPage: boolean
-  myNotesPage: boolean
-  insightsPage: boolean
-  user?: AuthUser
-  children: React.ReactNode
-}) {
+function DashboardShell({ page, user, children }: { page: DashboardPage; user?: AuthUser; children: React.ReactNode }) {
+  const { pathname } = useLocation()
   return (
-    <SidebarProvider>
+    <SidebarProvider className="dashboard-workspace" style={{ "--sidebar-width": "13rem" } as React.CSSProperties}>
       <Sidebar collapsible="icon" className="dashboard-sidebar">
-        <SidebarHeader className="dashboard-sidebar-header">
-          <div className="dashboard-sidebar-brand">
-            <div className="dashboard-sidebar-identity" aria-label="Language Coach">
-              <img src={coachIcon} alt="" />
-              <span>Language Coach</span>
-            </div>
-            <SidebarTrigger />
-          </div>
-        </SidebarHeader>
-
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupContent>
-              <DashboardSidebarNavigation
-                settingsPage={settingsPage}
-                myNotesPage={myNotesPage}
-                insightsPage={insightsPage}
-              />
-            </SidebarGroupContent>
+            <SidebarGroupContent><DashboardSidebarNavigation page={page} /></SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>
-
         <SidebarFooter>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={settingsPage} tooltip="Settings">
-                <Link to="/dashboard/settings"><Settings2Icon /><span>Settings</span></Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          <DashboardSidebarNavigation page={page} footer />
           {user && <div className="dashboard-sidebar-profile"><span>Signed in</span><strong>{user.email}</strong></div>}
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>
-
       <SidebarInset className="dashboard-shell-main">
-        <SidebarTrigger className="dashboard-mobile-sidebar-trigger md:hidden" />
-        {children}
+        <div className="dashboard-sidebar-toggle"><SidebarTrigger /></div>
+        <div className="dashboard-page-container" key={pathname}>{children}</div>
       </SidebarInset>
     </SidebarProvider>
   )
 }
 
-function NotesPage({ data, loadingMore, onLoadMore, onDelete, onReview, order, onOrderChange, onRefresh, refreshing }: {
+function PageHeader({ title, description, count }: { title: string; description?: string; count?: string }) {
+  return (
+    <header className="dashboard-page-header">
+      <div><h1>{title}</h1>{description && <p>{description}</p>}</div>
+      {count && <span className="dashboard-page-count">{count}</span>}
+    </header>
+  )
+}
+
+export function FlashcardsPage({ data, loadingMore, onLoadMore, onDelete, onReview, order = "review", onOrderChange, onRefresh, refreshing = false }: {
   data: DashboardData
   loadingMore: boolean
   onLoadMore: () => Promise<void>
   onDelete: (id: string) => Promise<void>
   onReview?: (id: string) => Promise<void>
-  order: NotesOrder
-  onOrderChange: (order: NotesOrder) => void
-  onRefresh: () => void
-  refreshing: boolean
+  order?: NotesOrder
+  onOrderChange?: (order: NotesOrder) => void
+  onRefresh?: () => void
+  refreshing?: boolean
 }) {
-  const isMobile = useIsMobile()
-
   return (
-    <div className="dashboard-feed" id="main-content">
-      <div className="dashboard-learning-layout">
-        <section className="flashcard-section" aria-label="English note flashcards">
-          {data.capabilities?.reviewScheduling && (
-            <div className="review-toolbar">
-              <div>
-                <label className="sr-only" htmlFor="notes-order">Card order</label>
-                <select id="notes-order" value={order} onChange={(event) => onOrderChange(event.target.value as NotesOrder)} disabled={refreshing}>
-                  <option value="review">Review first</option>
-                  <option value="recent">Latest notes</option>
-                </select>
-                <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing}>{refreshing ? "Refreshing…" : "Refresh order"}</Button>
-              </div>
-              {data.reviewSummary && <p aria-live="polite">{data.reviewSummary.due + data.reviewSummary.new === 0
-                ? "All reviews in this round are complete."
-                : `${data.reviewSummary.due} due · ${data.reviewSummary.new} not studied`}</p>}
+    <div className="dashboard-page flashcards-page" id="main-content" tabIndex={-1}>
+      <PageHeader title="Flash cards" count={`${data.progress.totalNotes} notes`} />
+      <section className="flashcard-section" aria-label="Language note flashcards">
+        {data.capabilities?.reviewScheduling && (
+          <div className="review-toolbar">
+            <div>
+              <label className="sr-only" htmlFor="notes-order">Card order</label>
+              <select id="notes-order" value={order} onChange={(event) => onOrderChange?.(event.target.value as NotesOrder)} disabled={refreshing || !onOrderChange}>
+                <option value="review">Review first</option>
+                <option value="recent">Latest notes</option>
+              </select>
+              <Button variant="ghost" size="sm" onClick={onRefresh} disabled={refreshing || !onRefresh}>{refreshing ? "Refreshing…" : "Refresh order"}</Button>
             </div>
-          )}
-          {data.notes.length ? (
-            <FlashcardDeck notes={data.notes} hasMore={Boolean(data.notesPage?.hasMore)} loadingMore={loadingMore}
-              onLoadMore={onLoadMore} onDelete={onDelete} onReview={onReview} />
-          ) : (
-            <Card className="empty-notes">
-              <CardHeader>
-                <CardTitle>No notes yet</CardTitle>
-                <CardDescription>Useful corrections and reusable language patterns will appear here as flashcards.</CardDescription>
-              </CardHeader>
-            </Card>
-          )}
-        </section>
-        {!isMobile && <LearningInsights progress={data.progress} />}
-      </div>
+            {data.reviewSummary && <p aria-live="polite">{data.reviewSummary.due + data.reviewSummary.new === 0
+              ? "All reviews in this round are complete."
+              : `${data.reviewSummary.due} due · ${data.reviewSummary.new} not studied`}</p>}
+          </div>
+        )}
+        {data.notes.length ? (
+          <FlashcardDeck notes={data.notes} totalNotes={data.reviewSummary
+            ? data.reviewSummary.due + data.reviewSummary.new + data.reviewSummary.scheduled : data.progress.totalNotes}
+            hasMore={Boolean(data.notesPage?.hasMore)} loadingMore={loadingMore}
+            onLoadMore={onLoadMore} onDelete={onDelete} onReview={onReview} />
+        ) : (
+          <Card className="empty-notes">
+            <CardHeader><CardTitle>No notes yet</CardTitle><CardDescription>Useful corrections and reusable language patterns will appear here as flashcards.</CardDescription></CardHeader>
+          </Card>
+        )}
+      </section>
     </div>
   )
 }
 
-function InsightsPage({ data }: { data: DashboardData }) {
+export function PatternsPage({ data }: { data: DashboardData }) {
   return (
-    <div className="insights-page" id="main-content">
-      <header className="insights-page-header">
-        <p className="notes-eyebrow">Learning activity</p>
-        <h1>Insights</h1>
-      </header>
-      <LearningInsights progress={data.progress} />
+    <div className="dashboard-page patterns-page" id="main-content" tabIndex={-1}>
+      <PageHeader title="Repeat patterns" description="Expressions worth using again." count={`${data.progress.recurringPatterns.length} patterns`} />
+      <RepeatPatterns patterns={data.progress.recurringPatterns} />
     </div>
   )
 }
 
-function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncToggle, onSignOut, openStandalone }: {
+export function ActivityPage({ data }: { data: DashboardData }) {
+  const topCategory = data.progress.categoryCounts[0]
+  return (
+    <div className="dashboard-page activity-page" id="main-content" tabIndex={-1}>
+      <PageHeader title="Activity" description="Your learning at a glance." />
+      <section className="activity-metrics" aria-label="Learning summary">
+        <MetricCard label="Learning notes" value={data.progress.totalNotes} detail={`${data.progress.notesThisWeek} saved this week`} icon={BookOpenCheckIcon} />
+        <MetricCard label="Current streak" value={`${data.progress.currentStreak}d`} detail={`${data.progress.activeDays} active days overall`} icon={FlameIcon} />
+        <MetricCard label="Target-language share" value={`${data.progress.languageUse.targetShare}%`} detail={`${data.progress.languageUse.target} target-language notes`} icon={TargetIcon} />
+        <MetricCard label="Top correction" value={topCategory?.category ?? "—"} detail={topCategory ? `${topCategory.count} corrections recorded` : "No corrections recorded"} icon={SparklesIcon} />
+      </section>
+      <ActivityHeatmap activity={data.progress.activity90Days} />
+      <section className="analytics-grid" aria-label="Learning activity">
+        <Card className="analytics-card activity-panel">
+          <CardHeader><CardTitle>Weekly activity</CardTitle><CardDescription>Useful notes saved in the last seven days.</CardDescription></CardHeader>
+          <CardContent><ActivityChart activity={data.progress.weeklyActivity} /></CardContent>
+        </Card>
+        <Card className="analytics-card language-panel">
+          <CardHeader><CardTitle>Language use</CardTitle><CardDescription>Language choice among saved lessons.</CardDescription></CardHeader>
+          <CardContent>
+            <LanguageUseChart data={data} />
+            <div className="language-legend">
+              {[
+                [data.profile.targetLanguage, data.progress.languageUse.target, "chart-1"],
+                [data.profile.nativeLanguage, data.progress.languageUse.native, "chart-2"],
+                ["Mixed", data.progress.languageUse.mixed, "chart-3"],
+                ["Other", data.progress.languageUse.other, "chart-4"],
+              ].map(([label, value, color]) => (
+                <div key={String(label)}><span className="legend-dot" style={{ background: `var(--${color})` }} /><span>{label}</span><strong>{value}</strong></div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="analytics-card category-panel">
+          <CardHeader><CardTitle>Correction mix</CardTitle><CardDescription>Where your saved lessons are concentrated.</CardDescription></CardHeader>
+          <CardContent><CategoryChart categories={data.progress.categoryCounts} /></CardContent>
+        </Card>
+      </section>
+    </div>
+  )
+}
+
+export function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncToggle, onSignOut, openStandalone }: {
   data: DashboardData
   saving: boolean
   onSave: (profile: Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">) => Promise<void>
@@ -658,65 +645,27 @@ function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncTo
   onSignOut: () => Promise<void>
   openStandalone?: () => Promise<void>
 }) {
-  const topCategory = data.progress.categoryCounts[0]
-
   return (
-      <div className="settings-page" id="main-content">
-        <section className="settings-intro">
-          <p className="notes-eyebrow">Settings &amp; activity</p>
-          <h1>Learning overview</h1>
-          <p>Review your progress and manage how Language Coach works.</p>
-        </section>
-
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Learning summary">
-          <MetricCard label="Learning notes" value={data.progress.totalNotes} detail={`${data.progress.notesThisWeek} saved this week`} icon={BookOpenCheckIcon} />
-          <MetricCard label="Current streak" value={`${data.progress.currentStreak}d`} detail={`${data.progress.activeDays} active days overall`} icon={FlameIcon} />
-          <MetricCard label="Target-language share" value={`${data.progress.languageUse.targetShare}%`} detail={`${data.progress.languageUse.target} target-language notes`} icon={TargetIcon} />
-          <MetricCard label="Top correction" value={topCategory?.category ?? "—"} detail={topCategory ? `${topCategory.count} corrections recorded` : "No corrections recorded"} icon={SparklesIcon} />
-        </section>
-
-        <section className="analytics-grid" aria-label="Learning activity">
-          <Card className="analytics-card activity-panel">
-            <CardHeader><CardTitle>Weekly activity</CardTitle><CardDescription>Useful language notes saved during the last seven days.</CardDescription></CardHeader>
-            <CardContent><ActivityChart activity={data.progress.weeklyActivity} /></CardContent>
-          </Card>
-          <Card className="analytics-card language-panel">
-            <CardHeader><CardTitle>Language use</CardTitle><CardDescription>Language choice among messages that became learning notes.</CardDescription></CardHeader>
-            <CardContent>
-              <LanguageUseChart data={data} />
-              <div className="language-legend">
-                {[
-                  [data.profile.targetLanguage, data.progress.languageUse.target, "chart-1"],
-                  [data.profile.nativeLanguage, data.progress.languageUse.native, "chart-2"],
-                  ["Mixed", data.progress.languageUse.mixed, "chart-3"],
-                  ["Other", data.progress.languageUse.other, "chart-4"],
-                ].map(([label, value, color]) => (
-                  <div key={String(label)}><span className="legend-dot" style={{ background: `var(--${color})` }} /><span>{label}</span><strong>{value}</strong></div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="analytics-card category-panel">
-            <CardHeader><CardTitle>Correction mix</CardTitle><CardDescription>Where your saved lessons are concentrated.</CardDescription></CardHeader>
-            <CardContent><CategoryChart categories={data.progress.categoryCounts} /></CardContent>
-          </Card>
-        </section>
-
+    <div className="dashboard-page settings-page" id="main-content" tabIndex={-1}>
+      <PageHeader title="Settings" description="Language and coaching preferences." />
+      <div className="settings-sections">
+        <SettingsCard profile={data.profile} saving={saving} onSave={onSave} />
         {openStandalone ? (
           <Card className="settings-editorial-card">
             <CardHeader><CardTitle>Login &amp; sync</CardTitle><CardDescription>{data.sync?.enabled ? "Cloud upload is on." : "Your notes are stored on this computer."} Manage your account in the web dashboard.</CardDescription></CardHeader>
             <CardContent><Button variant="outline" onClick={() => void onSyncToggle(Boolean(data.sync?.enabled))}>Open web dashboard</Button></CardContent>
           </Card>
         ) : <AccountSyncCard mode={mode} sync={data.sync} user={user} changing={syncChanging} onToggle={onSyncToggle} onSignOut={onSignOut} />}
-        <SettingsCard profile={data.profile} saving={saving} onSave={onSave} />
       </div>
+    </div>
   )
 }
 
 export function DashboardApp({ embedded }: { embedded?: { client: LearningDashboardClient; openStandalone: () => Promise<void> } }) {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const settingsPage = pathname === "/dashboard/settings" || pathname.startsWith("/dashboard/settings/")
+  const { page, redirectTo } = resolveDashboardRoute(pathname)
+  const settingsPage = page === "settings"
   const [data, setData] = useState<DashboardData>()
   const [runtime, setRuntime] = useState<DashboardRuntimeConfig | undefined>(embedded ? { mode: "local", remoteUrl: "" } : undefined)
   const [auth, setAuth] = useState<AuthClient>()
@@ -959,19 +908,18 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
     )
   }
 
-  const myNotesPage = pathname === "/dashboard/notes" || pathname.startsWith("/dashboard/notes/")
-  const insightsPage = pathname === "/dashboard/insights" || pathname.startsWith("/dashboard/insights/")
+  if (redirectTo) return <Navigate to={redirectTo} replace />
 
   return (
     <TooltipProvider>
       <a className="skip-link" href="#main-content">Skip to content</a>
       {error && <p role="alert" className="p-4 text-destructive">{error}</p>}
-      <DashboardShell settingsPage={settingsPage} myNotesPage={myNotesPage} insightsPage={insightsPage} user={user}>
+      <DashboardShell page={page} user={user}>
         {settingsPage
           ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} openStandalone={embedded?.openStandalone} />
-          : insightsPage
-            ? <InsightsPage data={data} />
-            : <NotesPage data={data} loadingMore={loadingMore || refreshing || paginationFailed} onLoadMore={loadMoreNotes} onDelete={deleteNote}
+          : page === "activity" ? <ActivityPage data={data} />
+          : page === "patterns" ? <PatternsPage data={data} />
+          : <FlashcardsPage data={data} loadingMore={loadingMore || refreshing || paginationFailed} onLoadMore={loadMoreNotes} onDelete={deleteNote}
               onReview={data.capabilities?.reviewScheduling ? markReviewed : undefined} order={order}
               onOrderChange={(next) => { void load(api, next) }} onRefresh={() => { void load() }} refreshing={refreshing || reviewBusy > 0} />}
       </DashboardShell>
