@@ -115,7 +115,7 @@ const termsSections: LegalSection[] = [
   },
   {
     title: "Open-source software",
-    content: <p>The Language Coach source code is available under the MIT License. The license applies to the software itself. It does not promise continued access to any hosted instance, third-party service, account, database, domain, or infrastructure operated by the maintainers or other providers.</p>,
+    content: <p>The Language Coach source code is available under the GNU Affero General Public License v3.0. The license applies to the software itself, and you may self-host it under its terms. Premium fees apply only to the hosted service operated by the maintainers. It does not promise continued access to any hosted instance, third-party service, account, database, domain, or infrastructure operated by the maintainers or other providers.</p>,
   },
   {
     title: "Third-party services",

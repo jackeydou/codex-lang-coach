@@ -640,6 +640,8 @@ export function ActivityPage({ data }: { data: DashboardData }) {
 }
 
 export type BillingPanelState = {
+  /** Whether this deployment sells remote sync as Premium. Self-hosted instances leave it off. */
+  offered: boolean
   status?: BillingStatus
   notice: string
   error: string
@@ -671,9 +673,9 @@ export function SettingsPage({ data, saving, onSave, mode, user, syncChanging, o
             <CardContent><Button variant="outline" onClick={() => void onSyncToggle(Boolean(data.sync?.enabled))}>Open web dashboard</Button></CardContent>
           </Card>
         ) : <AccountSyncCard mode={mode} sync={data.sync} user={user} changing={syncChanging}
-          premiumLocked={mode === "local" && Boolean(billing) && !billing?.status?.premium && billing?.status?.required !== false}
+          premiumLocked={mode === "local" && Boolean(billing?.offered) && !billing?.status?.premium}
           onToggle={onSyncToggle} onSignOut={onSignOut} />}
-        {!openStandalone && billing && <PremiumCard billing={billing.status} signedIn={Boolean(user)} notice={billing.notice}
+        {!openStandalone && billing && (billing.offered || billing.status?.premium || billing.status?.hasBillingAccount) && <PremiumCard billing={billing.status} signedIn={Boolean(user)} notice={billing.notice}
           error={billing.error} pendingAction={billing.pendingAction} onSubscribe={billing.onSubscribe} onManage={billing.onManage} />}
       </div>
     </div>
@@ -1037,7 +1039,7 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
       <DashboardShell page={page} user={user}>
         {settingsPage
           ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} openStandalone={embedded?.openStandalone}
-              billing={embedded ? undefined : { status: billing, notice: billingNotice, error: billingError, pendingAction: billingAction, onSubscribe: subscribe, onManage: manageBilling }} />
+              billing={embedded ? undefined : { offered: Boolean(runtime.premiumSyncRequired), status: billing, notice: billingNotice, error: billingError, pendingAction: billingAction, onSubscribe: subscribe, onManage: manageBilling }} />
           : page === "activity" ? <ActivityPage data={data} />
           : page === "patterns" ? <PatternsPage data={data} />
           : <FlashcardsPage data={data} loadingMore={loadingMore || refreshing || paginationFailed} onLoadMore={loadMoreNotes} onDelete={deleteNote}

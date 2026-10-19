@@ -24,10 +24,9 @@
 		}
 	],
 	"vars": {
-		"NEON_AUTH_URL": "https://ep-bitter-breeze-awzp75t4.neonauth.c-12.us-east-1.aws.neon.tech/neondb/auth",
-		// Remote sync needs an active Premium subscription. Set to "false" to make sync free for every account.
-		// STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are Worker secrets: `wrangler secret put <NAME>`.
-		"PREMIUM_SYNC_REQUIRED": "true"
+		// Premium billing is opt-in per deployment. The hosted service sets PREMIUM_SYNC_REQUIRED,
+		// STRIPE_SECRET_KEY, and STRIPE_WEBHOOK_SECRET as Worker secrets (see README).
+		"NEON_AUTH_URL": "https://ep-bitter-breeze-awzp75t4.neonauth.c-12.us-east-1.aws.neon.tech/neondb/auth"
 	},
 	"observability": {
 		"enabled": true

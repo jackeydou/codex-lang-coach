@@ -171,6 +171,18 @@ it("uses the existing remote recent endpoint when polling remote status", async 
   }))
 })
 
+it("learns from the remote service whether it sells Premium sync", async () => {
+  vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(json({ mode: "local", remoteUrl: "https://remote.example" }))
+    .mockResolvedValueOnce(json({ mode: "remote", remoteUrl: "https://remote.example", authUrl: "https://auth.example", premiumSyncRequired: true }))
+
+  await expect(loadDashboardRuntime({ includeRemoteAuth: true })).resolves.toMatchObject({
+    mode: "local",
+    authUrl: "https://auth.example",
+    premiumSyncRequired: true,
+  })
+})
+
 describe("DashboardApi billing", () => {
   const localRuntime: DashboardRuntimeConfig = { mode: "local", remoteUrl: "https://remote.example/" }
 

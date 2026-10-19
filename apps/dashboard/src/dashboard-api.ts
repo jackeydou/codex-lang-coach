@@ -62,7 +62,9 @@ export async function loadDashboardRuntime(
 
   try {
     const remote = await requestJson<DashboardRuntimeConfig>(`${current.remoteUrl.replace(/\/$/, "")}/api/config`)
-    return remote.authUrl ? { ...current, authUrl: remote.authUrl } : current
+    return remote.authUrl
+      ? { ...current, authUrl: remote.authUrl, premiumSyncRequired: remote.premiumSyncRequired }
+      : current
   } catch (error) {
     if (current.mode === "local") return current
     throw error

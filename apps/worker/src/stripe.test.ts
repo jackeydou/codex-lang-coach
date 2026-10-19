@@ -189,3 +189,16 @@ describe("Stripe webhook endpoint", () => {
     expect(await response.json()).toEqual({ received: true });
   });
 });
+
+describe("Premium sync opt-in", () => {
+  async function config(env: Record<string, string>) {
+    const response = await worker.fetch(new Request("https://language-coach.example/api/config"), env as never);
+    return response.json() as Promise<{ premiumSyncRequired: boolean }>;
+  }
+
+  it("keeps sync free unless the deployment explicitly enables Premium", async () => {
+    await expect(config({})).resolves.toMatchObject({ premiumSyncRequired: false });
+    await expect(config({ PREMIUM_SYNC_REQUIRED: "false" })).resolves.toMatchObject({ premiumSyncRequired: false });
+    await expect(config({ PREMIUM_SYNC_REQUIRED: "true" })).resolves.toMatchObject({ premiumSyncRequired: true });
+  });
+});

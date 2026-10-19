@@ -202,6 +202,8 @@ export interface DashboardRuntimeConfig {
   authUrl?: string;
   deviceId?: string;
   deviceName?: string;
+  /** Whether the remote service sells remote sync as a Premium subscription. */
+  premiumSyncRequired?: boolean;
 }
 
 export const PREMIUM_PLANS = [

@@ -14,6 +14,7 @@ await mkdir(target, { recursive: true });
 for (const entry of ["assets", "skills"]) {
   await cp(join(source, entry), join(target, entry), { recursive: true });
 }
+await cp(join(root, "LICENSE"), join(target, "LICENSE"));
 
 await cp(join(packaging, "skills"), join(target, "skills"), { recursive: true });
 
@@ -55,6 +56,7 @@ const requiredFiles = [
   "hooks/hooks.json",
   "hooks/user-prompt-submit.mjs",
   "skills/language-coach/SKILL.md",
+  "LICENSE",
   "mcp/server.mjs",
   "dashboard/dist/index.html",
   "ui/dashboard.html",

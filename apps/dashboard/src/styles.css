@@ -891,6 +891,7 @@
 .landing-pricing-premium li em { display: inline-block; margin-left: 8px; color: #79e48c; font-size: 12px; font-style: normal; white-space: nowrap; }
 .landing-pricing-premium li strong { font-family: "Signifier", Georgia, serif; font-size: 22px; font-weight: 400; white-space: nowrap; }
 .landing-pricing-premium li small { color: #a29c94; font-family: inherit; font-size: 12px; }
+.landing-pricing-note { margin: 16px 0 0; color: #85807a; font-size: 14px; line-height: 22px; }
 
 .landing-faq { padding-bottom: 144px; }
 .landing-faq dl { margin: 0; }

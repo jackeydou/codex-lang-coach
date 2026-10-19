@@ -28,7 +28,7 @@ interface Env {
   NEON_AUTH_URL: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
-  /** Set to "false" to let every signed-in account use remote sync without a subscription. */
+  /** Set to "true" to require a Premium subscription for remote sync. Self-hosted instances stay free by default. */
   PREMIUM_SYNC_REQUIRED?: string;
 }
 
@@ -404,7 +404,7 @@ async function uploadBatch(client: Client, userId: string, batch: SyncUploadBatc
 }
 
 function premiumSyncRequired(env: Env): boolean {
-  return env.PREMIUM_SYNC_REQUIRED !== "false";
+  return env.PREMIUM_SYNC_REQUIRED === "true";
 }
 
 function premiumRequiredResponse(request: Request): Response {
@@ -538,7 +538,12 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     });
   }
   if (url.pathname === "/api/config" && request.method === "GET") {
-    return json(request, { mode: "remote", remoteUrl: url.origin, authUrl: env.NEON_AUTH_URL });
+    return json(request, {
+      mode: "remote",
+      remoteUrl: url.origin,
+      authUrl: env.NEON_AUTH_URL,
+      premiumSyncRequired: premiumSyncRequired(env),
+    });
   }
   if (url.pathname === "/api/stripe/webhook" && request.method === "POST") {
     return handleStripeWebhook(request, env);

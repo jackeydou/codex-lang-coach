@@ -4,6 +4,6 @@
   "version": "0.2.4",
   "description": "Turn everyday messages into private, reusable language-learning notes.",
   "author": { "name": "Language Coach contributors" },
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "keywords": ["language-learning", "writing", "coaching", "reflection"]
 }
