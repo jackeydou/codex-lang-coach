@@ -185,6 +185,7 @@ export interface SyncStatus {
   state?: "idle" | "syncing" | "error";
   completedItems?: number;
   totalItems?: number;
+  premiumRequired?: boolean;
 }
 
 export interface RemoteSyncConfig {
@@ -201,4 +202,26 @@ export interface DashboardRuntimeConfig {
   authUrl?: string;
   deviceId?: string;
   deviceName?: string;
+}
+
+export const PREMIUM_PLANS = [
+  { id: "monthly", label: "Monthly", unitAmount: 299, interval: "month", intervalCount: 1, lookupKey: "language_coach_premium_monthly" },
+  { id: "quarterly", label: "Quarterly", unitAmount: 799, interval: "month", intervalCount: 3, lookupKey: "language_coach_premium_quarterly" },
+  { id: "yearly", label: "Yearly", unitAmount: 2999, interval: "year", intervalCount: 1, lookupKey: "language_coach_premium_yearly" },
+] as const;
+
+export type PremiumPlan = (typeof PREMIUM_PLANS)[number]["id"];
+
+export interface BillingStatus {
+  /** Whether the account can use remote sync right now. */
+  premium: boolean;
+  /** Whether the hosted service requires Premium for remote sync. */
+  required: boolean;
+  /** Whether Stripe checkout is available on the hosted service. */
+  checkoutAvailable: boolean;
+  plan?: PremiumPlan;
+  status?: string;
+  currentPeriodEnd?: string;
+  cancelAtPeriodEnd?: boolean;
+  hasBillingAccount: boolean;
 }

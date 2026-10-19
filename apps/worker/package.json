@@ -9,7 +9,8 @@
     "deploy": "pnpm --filter @language-coach/dashboard build && wrangler deploy",
     "dev": "pnpm --filter @language-coach/dashboard build && wrangler dev",
     "migrate:production": "node scripts/migrate-production.mjs",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "stripe:setup": "node scripts/stripe-setup.mjs"
   },
   "dependencies": {
     "@language-coach/core": "workspace:*",

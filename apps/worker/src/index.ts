@@ -1,20 +1,35 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { Client } from "pg";
-import type {
-  DashboardData,
-  InputLanguageKind,
-  LanguageProfile,
-  LearningNote,
-  NotesPage,
-  ProgressSummary,
-  SyncUploadBatch,
-  SyncUploadResult,
+import {
+  PREMIUM_PLANS,
+  type DashboardData,
+  type InputLanguageKind,
+  type LanguageProfile,
+  type LearningNote,
+  type NotesPage,
+  type ProgressSummary,
+  type SyncUploadBatch,
+  type SyncUploadResult,
 } from "@language-coach/core/types";
+import { hasPremiumAccess, readBillingStatus, readCustomerId, saveCustomerId, upsertSubscription } from "./billing";
+import {
+  StripeClient,
+  billingEventTarget,
+  billingReturnUrl,
+  verifyStripeSignature,
+  type StripeEvent,
+  type StripePrice,
+  type StripeSubscription,
+} from "./stripe";
 
 interface Env {
   HYPERDRIVE: Hyperdrive;
   ASSETS: Fetcher;
   NEON_AUTH_URL: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  /** Set to "false" to let every signed-in account use remote sync without a subscription. */
+  PREMIUM_SYNC_REQUIRED?: string;
 }
 
 const AGENT_GUIDES: Record<string, string> = {
@@ -23,7 +38,7 @@ const AGENT_GUIDES: Record<string, string> = {
   "/cursor": "/guides/cursor.txt",
 };
 
-type AuthenticatedUser = { id: string; source: "jwt" | "sync"; deviceId?: string; tokenHash?: string };
+type AuthenticatedUser = { id: string; source: "jwt" | "sync"; email?: string; deviceId?: string; tokenHash?: string };
 type ProfileRow = { native_language: string; target_language: string; coach_enabled: boolean; updated_at: Date | string };
 type NoteRow = {
   id: string;
@@ -151,7 +166,7 @@ async function verifyJwt(token: string, env: Env): Promise<AuthenticatedUser> {
   });
   if (!payload.sub) throw new Error("The authentication token has no user ID.");
   if (payload.emailVerified !== true && payload.email_verified !== true) throw new Error("Email verification is required.");
-  return { id: payload.sub, source: "jwt" };
+  return { id: payload.sub, source: "jwt", email: typeof payload.email === "string" ? payload.email : undefined };
 }
 
 async function resolveSyncToken(token: string, env: Env): Promise<AuthenticatedUser> {
@@ -388,6 +403,125 @@ async function uploadBatch(client: Client, userId: string, batch: SyncUploadBatc
   };
 }
 
+function premiumSyncRequired(env: Env): boolean {
+  return env.PREMIUM_SYNC_REQUIRED !== "false";
+}
+
+function premiumRequiredResponse(request: Request): Response {
+  return json(request, {
+    error: "Remote sync requires Language Coach Premium. Open Settings in the dashboard to choose a plan.",
+    code: "premium_required",
+  }, 402);
+}
+
+async function resolveBillingCustomer(env: Env, customerId: string): Promise<string | undefined> {
+  const client = await connect(env);
+  try {
+    const result = await client.query<{ user_id: string | null }>(
+      "SELECT public.resolve_billing_customer($1) AS user_id",
+      [customerId],
+    );
+    return result.rows[0]?.user_id ?? undefined;
+  } finally {
+    await client.end();
+  }
+}
+
+async function handleStripeWebhook(request: Request, env: Env): Promise<Response> {
+  if (!env.STRIPE_SECRET_KEY || !env.STRIPE_WEBHOOK_SECRET) {
+    return json(request, { error: "Billing is not configured." }, 503);
+  }
+  const payload = await request.text();
+  if (!(await verifyStripeSignature(payload, request.headers.get("stripe-signature"), env.STRIPE_WEBHOOK_SECRET))) {
+    return json(request, { error: "Invalid Stripe signature." }, 400);
+  }
+  const event = JSON.parse(payload) as StripeEvent;
+  const target = billingEventTarget(event);
+  if (!target) return json(request, { received: true });
+
+  // Always store the current subscription from the API so out-of-order events cannot leave stale state.
+  const stripe = new StripeClient(env.STRIPE_SECRET_KEY);
+  const subscription = await stripe.request<StripeSubscription>("GET", `/subscriptions/${encodeURIComponent(target.subscriptionId)}`);
+  const userId = (await resolveBillingCustomer(env, subscription.customer)) || subscription.metadata?.user_id || target.userId;
+  if (!userId) {
+    console.warn(`Ignoring Stripe subscription ${subscription.id} without a Language Coach user.`);
+    return json(request, { received: true });
+  }
+  await withTenant(env, userId, async (client) => {
+    await saveCustomerId(client, userId, subscription.customer);
+    await upsertSubscription(client, userId, subscription);
+  });
+  return json(request, { received: true });
+}
+
+async function createCheckoutSession(request: Request, env: Env, url: URL, user: AuthenticatedUser): Promise<Response> {
+  if (!env.STRIPE_SECRET_KEY) return json(request, { error: "Checkout is not available yet." }, 503);
+  const input = await request.json<{ plan?: string; returnUrl?: string }>();
+  const plan = PREMIUM_PLANS.find((candidate) => candidate.id === input.plan);
+  if (!plan) return json(request, { error: "Choose a monthly, quarterly, or yearly plan." }, 400);
+  const returnUrl = billingReturnUrl(input.returnUrl, url.origin);
+  if (!returnUrl) return json(request, { error: "A valid dashboard return URL is required." }, 400);
+
+  const state = await withTenant(env, user.id, async (client) => ({
+    premium: await hasPremiumAccess(client, user.id),
+    customerId: await readCustomerId(client, user.id),
+  }));
+  if (state.premium) {
+    return json(request, { error: "Premium is already active. Use Manage billing to change your plan.", code: "already_premium" }, 409);
+  }
+
+  const stripe = new StripeClient(env.STRIPE_SECRET_KEY);
+  let customerId = state.customerId;
+  if (!customerId) {
+    const customer = await stripe.request<{ id: string }>("POST", "/customers", {
+      email: user.email,
+      metadata: { user_id: user.id },
+    }, `language-coach-customer-${user.id}`);
+    customerId = await withTenant(env, user.id, (client) => saveCustomerId(client, user.id, customer.id));
+  }
+
+  const prices = await stripe.request<{ data: StripePrice[] }>("GET", "/prices", {
+    lookup_keys: [plan.lookupKey],
+    active: true,
+    limit: 1,
+  });
+  const price = prices.data[0];
+  if (!price) return json(request, { error: `The ${plan.label.toLowerCase()} plan is not available yet.` }, 503);
+
+  const successUrl = new URL(returnUrl);
+  successUrl.searchParams.set("billing", "success");
+  const cancelUrl = new URL(returnUrl);
+  cancelUrl.searchParams.set("billing", "cancelled");
+  const session = await stripe.request<{ url: string | null }>("POST", "/checkout/sessions", {
+    mode: "subscription",
+    customer: customerId,
+    client_reference_id: user.id,
+    line_items: [{ price: price.id, quantity: 1 }],
+    allow_promotion_codes: true,
+    success_url: successUrl.toString(),
+    cancel_url: cancelUrl.toString(),
+    metadata: { user_id: user.id, plan: plan.id },
+    subscription_data: { metadata: { user_id: user.id, plan: plan.id } },
+  });
+  if (!session.url) throw new Error("Stripe did not return a checkout URL.");
+  return json(request, { url: session.url });
+}
+
+async function createBillingPortalSession(request: Request, env: Env, url: URL, user: AuthenticatedUser): Promise<Response> {
+  if (!env.STRIPE_SECRET_KEY) return json(request, { error: "Billing is not available yet." }, 503);
+  const input = await request.json<{ returnUrl?: string }>().catch(() => ({} as { returnUrl?: string }));
+  const returnUrl = billingReturnUrl(input.returnUrl, url.origin);
+  if (!returnUrl) return json(request, { error: "A valid dashboard return URL is required." }, 400);
+  const customerId = await withTenant(env, user.id, (client) => readCustomerId(client, user.id));
+  if (!customerId) return json(request, { error: "No billing account was found for this login." }, 404);
+  const stripe = new StripeClient(env.STRIPE_SECRET_KEY);
+  const session = await stripe.request<{ url: string }>("POST", "/billing_portal/sessions", {
+    customer: customerId,
+    return_url: returnUrl.toString(),
+  });
+  return json(request, { url: session.url });
+}
+
 async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "OPTIONS") {
     const origin = corsOrigin(request);
@@ -406,6 +540,9 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   if (url.pathname === "/api/config" && request.method === "GET") {
     return json(request, { mode: "remote", remoteUrl: url.origin, authUrl: env.NEON_AUTH_URL });
   }
+  if (url.pathname === "/api/stripe/webhook" && request.method === "POST") {
+    return handleStripeWebhook(request, env);
+  }
 
   let user: AuthenticatedUser;
   try {
@@ -420,7 +557,8 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     if (!isUuid(input.deviceId)) return json(request, { error: "A valid device ID is required." }, 400);
     const deviceName = input.deviceName?.trim().slice(0, 120) || `Device ${input.deviceId.slice(0, 8)}`;
     const token = createSyncToken();
-    await withTenant(env, user.id, async (client) => {
+    const linked = await withTenant(env, user.id, async (client) => {
+      if (premiumSyncRequired(env) && !(await hasPremiumAccess(client, user.id))) return false;
       await client.query(`INSERT INTO public.sync_devices (user_id, device_id, display_name)
         VALUES ($1, $2, $3)
         ON CONFLICT (user_id, device_id) DO UPDATE SET display_name = excluded.display_name`,
@@ -428,7 +566,9 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       await client.query("DELETE FROM public.sync_tokens WHERE user_id = $1 AND device_id = $2", [user.id, input.deviceId]);
       await client.query("INSERT INTO public.sync_tokens (token_hash, user_id, device_id) VALUES ($1, $2, $3)",
         [await sha256(token), user.id, input.deviceId]);
+      return true;
     });
+    if (!linked) return premiumRequiredResponse(request);
     return json(request, { token, userId: user.id, deviceId: input.deviceId, deviceName });
   }
 
@@ -446,7 +586,21 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return json(request, { error: "Device sync tokens can only upload data." }, 403);
   }
 
+  if (url.pathname === "/api/billing/checkout" && request.method === "POST") {
+    return createCheckoutSession(request, env, url, user);
+  }
+  if (url.pathname === "/api/billing/portal" && request.method === "POST") {
+    return createBillingPortalSession(request, env, url, user);
+  }
+
   return withTenant(env, user.id, async (client) => {
+    if (url.pathname === "/api/billing" && request.method === "GET") {
+      return json(request, await readBillingStatus(client, user.id, {
+        required: premiumSyncRequired(env),
+        checkoutAvailable: Boolean(env.STRIPE_SECRET_KEY),
+      }));
+    }
+
     if (url.pathname === "/api/dashboard" && request.method === "GET") {
       const [profile, notesResult, progress] = await Promise.all([
         readProfile(client, user.id),
@@ -497,6 +651,9 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
       }
       if (user.deviceId && user.deviceId !== batch.deviceId) {
         return json(request, { error: "This sync token belongs to a different device." }, 403);
+      }
+      if (premiumSyncRequired(env) && !(await hasPremiumAccess(client, user.id))) {
+        return premiumRequiredResponse(request);
       }
       if (!user.deviceId && user.tokenHash) {
         await client.query("UPDATE public.sync_tokens SET device_id = $2 WHERE token_hash = $1 AND user_id = $3",

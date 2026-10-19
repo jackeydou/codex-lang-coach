@@ -26,6 +26,13 @@ function useSystemCertificateAuthorities(): void {
 
 useSystemCertificateAuthorities();
 
+export class PremiumRequiredError extends Error {
+  constructor() {
+    super("Remote sync requires Language Coach Premium. Open Settings in the dashboard to choose a plan.");
+    this.name = "PremiumRequiredError";
+  }
+}
+
 export function resolveRemoteSyncConfigPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.LANGUAGE_COACH_SYNC_CONFIG_PATH || join(homedir(), ".language-coach", "remote-sync.json");
 }
@@ -59,6 +66,7 @@ export class RemoteLearningSync {
   private syncRequested = false;
   private lastSyncedAt?: string;
   private lastError?: string;
+  private premiumRequired = false;
   private state: SyncStatus["state"] = "idle";
   private completedItems = 0;
   private totalItems = 0;
@@ -89,6 +97,7 @@ export class RemoteLearningSync {
       remoteUrl: config?.remoteUrl || this.remoteUrl,
       lastSyncedAt: checkpoint?.lastSyncedAt ?? this.lastSyncedAt,
       error: this.lastError,
+      premiumRequired: this.premiumRequired || undefined,
       state: this.state,
       completedItems: this.completedItems,
       totalItems: this.totalItems,
@@ -107,12 +116,15 @@ export class RemoteLearningSync {
     mkdirSync(dirname(this.configPath), { recursive: true, mode: 0o700 });
     writeFileSync(this.configPath, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
     this.lastSyncedAt = this.store.getSyncCheckpoint(config.remoteUrl, config.userId).lastSyncedAt;
+    this.lastError = undefined;
+    this.premiumRequired = false;
   }
 
   disable(): void {
     rmSync(this.configPath, { force: true });
     this.lastSyncedAt = undefined;
     this.lastError = undefined;
+    this.premiumRequired = false;
     this.state = "idle";
     this.completedItems = 0;
     this.totalItems = 0;
@@ -149,6 +161,7 @@ export class RemoteLearningSync {
       },
       body: JSON.stringify(batch),
     });
+    if (response.status === 402) throw new PremiumRequiredError();
     if (!response.ok) {
       const body = await response.text();
       throw new Error(`Remote sync failed (${response.status}): ${body.slice(0, 240)}`);
@@ -180,6 +193,7 @@ export class RemoteLearningSync {
         this.store.markSyncCheckpoint(config.remoteUrl, config.userId, snapshot.throughRevision, syncedAt);
         this.lastSyncedAt = syncedAt;
         this.lastError = undefined;
+        this.premiumRequired = false;
         this.state = "idle";
         return { deviceId: config.deviceId, acceptedNotes, acceptedDeletions, syncedAt };
       }
@@ -198,10 +212,12 @@ export class RemoteLearningSync {
       this.store.markSyncCheckpoint(config.remoteUrl, config.userId, snapshot.throughRevision, syncedAt);
       this.lastSyncedAt = syncedAt;
       this.lastError = undefined;
+      this.premiumRequired = false;
       this.state = "idle";
       return { deviceId: config.deviceId, acceptedNotes, acceptedDeletions, syncedAt };
     } catch (error) {
       this.lastError = error instanceof Error ? error.message : String(error);
+      this.premiumRequired = error instanceof PremiumRequiredError;
       this.state = "error";
       throw error;
     }

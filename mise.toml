@@ -59,6 +59,10 @@ run = [
 description = "Build the dashboard and run the Cloudflare Worker locally"
 run = "pnpm --filter @language-coach/worker dev"
 
+[tasks."stripe:setup"]
+description = "Create the Premium product, prices, and webhook in Stripe"
+run = "pnpm --filter @language-coach/worker run stripe:setup"
+
 [tasks."cloudflare:whoami"]
 description = "Show the active Cloudflare account"
 run = "pnpm --filter @language-coach/worker exec wrangler whoami"

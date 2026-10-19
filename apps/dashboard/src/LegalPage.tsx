@@ -2,7 +2,7 @@ import { ArrowLeftIcon, LanguagesIcon } from "lucide-react"
 import { useEffect, type ReactNode } from "react"
 import { Link } from "react-router-dom"
 
-const LAST_UPDATED = "August 31, 2026"
+const LAST_UPDATED = "October 18, 2026"
 const REPOSITORY_URL = "https://github.com/jackeydou/codex-lang-coach"
 
 type LegalSection = {
@@ -24,6 +24,7 @@ const privacySections: LegalSection[] = [
         <li><strong>Language settings.</strong> Your native language, target language, and whether coaching is enabled.</li>
         <li><strong>Learning notes.</strong> The expression being coached, its polished version, correction categories and explanations, reusable patterns, transfer examples, language classification, optional turn identifier, and timestamps.</li>
         <li><strong>Sync information.</strong> Account identifiers, hashed device-sync tokens, sync timestamps, and deletion records used to keep devices consistent.</li>
+        <li><strong>Billing information.</strong> If you subscribe to Premium, Stripe processes your payment details. We store only your Stripe customer and subscription identifiers, plan, subscription status, and renewal date. We never receive or store full card numbers.</li>
         <li><strong>Technical information.</strong> Our hosting, database, authentication, and OAuth providers may process IP addresses, browser and device details, request metadata, cookies, and diagnostic or security logs when they operate the service.</li>
       </ul>
     </>,
@@ -46,7 +47,7 @@ const privacySections: LegalSection[] = [
   {
     title: "Service providers",
     content: <>
-      <p>Depending on the features you use, information may be processed by <a href="https://neon.com/privacy-policy" target="_blank" rel="noreferrer">Neon</a> for authentication and database hosting, <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noreferrer">Cloudflare</a> for website and API infrastructure, and <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google</a> or <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noreferrer">GitHub</a> when you choose their sign-in option. Those providers handle information under their own terms and privacy policies.</p>
+      <p>Depending on the features you use, information may be processed by <a href="https://neon.com/privacy-policy" target="_blank" rel="noreferrer">Neon</a> for authentication and database hosting, <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noreferrer">Cloudflare</a> for website and API infrastructure, <a href="https://stripe.com/privacy" target="_blank" rel="noreferrer">Stripe</a> for Premium payments, and <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google</a> or <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" target="_blank" rel="noreferrer">GitHub</a> when you choose their sign-in option. Those providers handle information under their own terms and privacy policies.</p>
     </>,
   },
   {
@@ -101,6 +102,14 @@ const termsSections: LegalSection[] = [
     </>,
   },
   {
+    title: "Premium subscriptions",
+    content: <>
+      <p>Remote sync is part of Language Coach Premium, a paid subscription billed in US dollars at $2.99 per month, $7.99 every three months, or $29.99 per year, plus any taxes that apply. Payments are processed by Stripe. Your subscription renews automatically at the end of each billing period until you cancel.</p>
+      <p>You can cancel or change your plan at any time from <strong>Settings → Manage billing</strong>. A cancellation takes effect at the end of the current billing period, and Premium features stay available until then. Except where the law requires otherwise, payments are not refundable for partial periods. When Premium ends, devices stop uploading new notes. Your local notes and the notes already in your account remain available to view and delete.</p>
+      <p>We may change prices for future billing periods. We will notify you before a change takes effect, and you can cancel before it applies.</p>
+    </>,
+  },
+  {
     title: "Your content",
     content: <p>You keep any rights you have in the expressions and learning material you submit. You give the service permission to process, store, reproduce, and transmit that material only as needed to provide, secure, synchronize, and maintain the features you choose. You are responsible for having the right to submit the material.</p>,
   },
@@ -110,7 +119,7 @@ const termsSections: LegalSection[] = [
   },
   {
     title: "Third-party services",
-    content: <p>The service depends on providers including Neon, Cloudflare, Google, and GitHub. Their services and sign-in options are governed by their own terms and may change, fail, or become unavailable. Language Coach is not responsible for third-party products or accounts.</p>,
+    content: <p>The service depends on providers including Neon, Cloudflare, Stripe, Google, and GitHub. Their services and sign-in options are governed by their own terms and may change, fail, or become unavailable. Language Coach is not responsible for third-party products or accounts.</p>,
   },
   {
     title: "Availability and changes",
@@ -164,7 +173,7 @@ export function LegalPage({ kind }: { kind: "privacy" | "terms" }) {
           <p className="legal-kicker">Language Coach</p>
           <h1>{title}</h1>
           <p>{description}</p>
-          <time dateTime="2026-08-31">Last updated {LAST_UPDATED}</time>
+          <time dateTime="2026-10-18">Last updated {LAST_UPDATED}</time>
         </header>
 
         <div className="legal-sections">

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RemoteLearningSync } from "../src/remote-sync.js";
+import { PremiumRequiredError, RemoteLearningSync } from "../src/remote-sync.js";
 import { SqliteLearningStore } from "../src/storage.js";
 import type { SyncUploadBatch } from "../src/types.js";
 
@@ -162,6 +162,42 @@ describe("RemoteLearningSync", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(restartedSync.status.lastSyncedAt).toBeDefined();
     store.close();
+  });
+
+  it("reports when the remote account needs Premium and keeps notes queued", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "language-coach-sync-test-"));
+    temporaryDirectories.push(directory);
+    const store = new SqliteLearningStore(join(directory, "notes.sqlite"));
+    store.saveNote({
+      turnId: "turn-premium",
+      inputLanguage: "target",
+      originalExpression: "Original",
+      polishedExpression: "Polished",
+      corrections: [],
+      patterns: [],
+      examples: [],
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(
+      { error: "Remote sync requires Language Coach Premium.", code: "premium_required" },
+      { status: 402 },
+    ));
+
+    const sync = new RemoteLearningSync(store, {
+      LANGUAGE_COACH_SYNC_CONFIG_PATH: join(directory, "remote-sync.json"),
+    });
+    sync.configure({
+      remoteUrl: "https://language-coach.example",
+      token: "lc_abcdefghijklmnopqrstuvwxyz0123456789",
+      userId: "user-1",
+      deviceId: "123e4567-e89b-42d3-a456-426614174000",
+    });
+
+    await expect(sync.sync()).rejects.toBeInstanceOf(PremiumRequiredError);
+    expect(sync.status).toMatchObject({ state: "error", premiumRequired: true });
+    expect(store.getSyncSnapshot("https://language-coach.example", "user-1").notes).toHaveLength(1);
+
+    sync.disable();
+    expect(sync.status.premiumRequired).toBeUndefined();
   });
 });
 
