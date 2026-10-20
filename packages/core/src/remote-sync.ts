@@ -33,6 +33,17 @@ export class PremiumRequiredError extends Error {
   }
 }
 
+/** Sync tokens travel over HTTPS, except to a Worker running on this machine (`wrangler dev`). */
+function isSecureRemoteUrl(remoteUrl: string): boolean {
+  try {
+    const url = new URL(remoteUrl);
+    return url.protocol === "https:"
+      || (url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1"));
+  } catch {
+    return false;
+  }
+}
+
 export function resolveRemoteSyncConfigPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.LANGUAGE_COACH_SYNC_CONFIG_PATH || join(homedir(), ".language-coach", "remote-sync.json");
 }
@@ -110,7 +121,7 @@ export class RemoteLearningSync {
     if (existing?.userId && existing.userId !== config.userId) {
       throw new Error("This local database is already linked to another account. Disable sync before linking a different account.");
     }
-    if (!config.remoteUrl.startsWith("https://") || config.token.length < 32 || !config.userId || !config.deviceId) {
+    if (!isSecureRemoteUrl(config.remoteUrl) || config.token.length < 32 || !config.userId || !config.deviceId) {
       throw new Error("The remote sync configuration is invalid.");
     }
     mkdirSync(dirname(this.configPath), { recursive: true, mode: 0o700 });

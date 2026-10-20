@@ -4,7 +4,8 @@ export const STRIPE_API_VERSION = "2025-09-30.clover";
 const STRIPE_API_URL = "https://api.stripe.com/v1";
 const SIGNATURE_TOLERANCE_SECONDS = 300;
 const PREMIUM_STATUSES = new Set(["active", "trialing", "past_due"]);
-// Renewals move the period end forward through webhooks; this covers delayed delivery.
+// Renewals move the period end forward through webhooks; this covers delayed delivery. It is also how long
+// a past_due subscription keeps Premium after the last paid period ended while Stripe retries the payment.
 const PERIOD_END_GRACE_MS = 3 * 24 * 60 * 60 * 1000;
 
 export type StripeParams = {
@@ -23,9 +24,10 @@ export interface StripeSubscription {
   status: string;
   cancel_at_period_end: boolean;
   cancel_at: number | null;
+  current_period_start?: number;
   current_period_end?: number;
   metadata?: Record<string, string>;
-  items: { data: Array<{ price: StripePrice; current_period_end?: number }> };
+  items: { data: Array<{ price: StripePrice; current_period_start?: number; current_period_end?: number }> };
 }
 
 export interface StripeEvent {
@@ -130,18 +132,34 @@ export function planForPrice(price: StripePrice | undefined): PremiumPlan | unde
     && plan.intervalCount === price.recurring?.interval_count)?.id;
 }
 
-export function subscriptionPeriodEnd(subscription: StripeSubscription): string | undefined {
+function subscriptionPeriodBoundary(
+  subscription: StripeSubscription,
+  field: "current_period_start" | "current_period_end",
+): string | undefined {
   // Since API version 2025-03-31.basil, billing periods live on subscription items.
-  const itemEnds = subscription.items.data.map((item) => item.current_period_end).filter((value): value is number => typeof value === "number");
-  const seconds = itemEnds.length ? Math.max(...itemEnds) : subscription.current_period_end;
+  const itemValues = subscription.items.data.map((item) => item[field]).filter((value): value is number => typeof value === "number");
+  const seconds = itemValues.length ? Math.max(...itemValues) : subscription[field];
   return typeof seconds === "number" ? new Date(seconds * 1000).toISOString() : undefined;
 }
 
+export function subscriptionPeriodStart(subscription: StripeSubscription): string | undefined {
+  return subscriptionPeriodBoundary(subscription, "current_period_start");
+}
+
+export function subscriptionPeriodEnd(subscription: StripeSubscription): string | undefined {
+  return subscriptionPeriodBoundary(subscription, "current_period_end");
+}
+
 export function subscriptionGrantsPremium(
-  subscription: { status: string; current_period_end: Date | string | null },
+  subscription: { status: string; current_period_start?: Date | string | null; current_period_end: Date | string | null },
   now = Date.now(),
 ): boolean {
   if (!PREMIUM_STATUSES.has(subscription.status)) return false;
+  if (subscription.status === "past_due") {
+    // A failed renewal still advances the period, so the unpaid period's start is when the paid one ended.
+    if (!subscription.current_period_start) return false;
+    return new Date(subscription.current_period_start).getTime() + PERIOD_END_GRACE_MS > now;
+  }
   if (!subscription.current_period_end) return true;
   return new Date(subscription.current_period_end).getTime() + PERIOD_END_GRACE_MS > now;
 }

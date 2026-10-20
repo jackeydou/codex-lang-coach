@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS public.billing_subscriptions (
   status text NOT NULL,
   plan text CHECK (plan IN ('monthly', 'quarterly', 'yearly')),
   price_id text,
+  current_period_start timestamptz,
   current_period_end timestamptz,
   cancel_at_period_end boolean NOT NULL DEFAULT false,
   updated_at timestamptz NOT NULL DEFAULT now()

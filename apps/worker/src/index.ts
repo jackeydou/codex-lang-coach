@@ -11,7 +11,7 @@ import {
   type SyncUploadBatch,
   type SyncUploadResult,
 } from "@language-coach/core/types";
-import { hasPremiumAccess, readBillingStatus, readCustomerId, saveCustomerId, upsertSubscription } from "./billing";
+import { hasPremiumAccess, readBillingStatus, readCustomerId, readPremiumAccess, saveCustomerId, upsertSubscription } from "./billing";
 import {
   StripeClient,
   billingEventTarget,
@@ -463,11 +463,17 @@ async function createCheckoutSession(request: Request, env: Env, url: URL, user:
   if (!returnUrl) return json(request, { error: "A valid dashboard return URL is required." }, 400);
 
   const state = await withTenant(env, user.id, async (client) => ({
-    premium: await hasPremiumAccess(client, user.id),
+    ...await readPremiumAccess(client, user.id),
     customerId: await readCustomerId(client, user.id),
   }));
   if (state.premium) {
     return json(request, { error: "Premium is already active. Use Manage billing to change your plan.", code: "already_premium" }, 409);
+  }
+  if (state.paymentOverdue) {
+    return json(request, {
+      error: "Your last payment did not go through. Update your payment method in Manage billing to restore sync.",
+      code: "payment_overdue",
+    }, 409);
   }
 
   const stripe = new StripeClient(env.STRIPE_SECRET_KEY);

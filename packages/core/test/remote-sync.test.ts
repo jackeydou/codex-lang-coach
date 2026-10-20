@@ -201,6 +201,22 @@ describe("RemoteLearningSync", () => {
   });
 });
 
+it("accepts HTTPS or a local Worker as the sync server", () => {
+  const directory = mkdtempSync(join(tmpdir(), "language-coach-sync-url-test-"));
+  temporaryDirectories.push(directory);
+  const store = new SqliteLearningStore(join(directory, "notes.sqlite"));
+  const sync = new RemoteLearningSync(store, { LANGUAGE_COACH_SYNC_CONFIG_PATH: join(directory, "remote-sync.json") });
+  const config = (remoteUrl: string) => ({ remoteUrl, token: "x".repeat(40), userId: "user-1", deviceId: "device", deviceName: "test" });
+  try {
+    for (const remoteUrl of ["https://language-coach.example", "http://localhost:8787", "http://127.0.0.1:8787"]) {
+      expect(() => sync.configure(config(remoteUrl))).not.toThrow();
+    }
+    for (const remoteUrl of ["http://language-coach.example", "http://localhost.example", "not a url"]) {
+      expect(() => sync.configure(config(remoteUrl))).toThrow("invalid");
+    }
+  } finally { store.close(); }
+});
+
 it("isolated development ignores saved credentials and refuses remote sync", async () => {
   const directory = mkdtempSync(join(tmpdir(), "coach-dev-test-"));
   temporaryDirectories.push(directory);

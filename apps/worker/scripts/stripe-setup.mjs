@@ -7,6 +7,9 @@ import { pathToFileURL } from "node:url";
 // Keep in sync with PREMIUM_PLANS in packages/core/src/types.ts (enforced by stripe-setup.test.ts).
 export const STRIPE_API_VERSION = "2025-09-30.clover";
 export const PRODUCT_ID = "language_coach_premium";
+// "Software as a service (SaaS) - personal use". Stripe Managed Payments requires an eligible tax code,
+// and Stripe Tax uses it to pick the tax rate.
+export const PRODUCT_TAX_CODE = "txcd_10103000";
 export const PLANS = [
   { id: "monthly", label: "Monthly", unitAmount: 299, interval: "month", intervalCount: 1, lookupKey: "language_coach_premium_monthly" },
   { id: "quarterly", label: "Quarterly", unitAmount: 799, interval: "month", intervalCount: 3, lookupKey: "language_coach_premium_quarterly" },
@@ -70,14 +73,17 @@ function priceMatches(price, plan) {
 async function ensureProduct(stripe) {
   try {
     const product = await stripe("GET", `/products/${PRODUCT_ID}`);
-    if (!product.active) await stripe("POST", `/products/${PRODUCT_ID}`, { active: true });
-    console.log(`✓ Product ${PRODUCT_ID} exists`);
+    if (!product.active || product.tax_code !== PRODUCT_TAX_CODE) {
+      await stripe("POST", `/products/${PRODUCT_ID}`, { active: true, tax_code: PRODUCT_TAX_CODE });
+    }
+    console.log(`✓ Product ${PRODUCT_ID} exists (tax code ${PRODUCT_TAX_CODE})`);
   } catch (error) {
     if (error.status !== 404) throw error;
     await stripe("POST", "/products", {
       id: PRODUCT_ID,
       name: "Language Coach Premium",
       description: "Private remote sync for Language Coach learning notes across devices and the web dashboard.",
+      tax_code: PRODUCT_TAX_CODE,
     });
     console.log(`✓ Created product ${PRODUCT_ID}`);
   }
@@ -126,7 +132,7 @@ async function ensureWebhook(stripe, url) {
 
 async function main() {
   if (process.argv.includes("--help")) {
-    console.log(`Usage: pnpm --filter @language-coach/worker run stripe:setup -- [--webhook-url URL] [--yes]
+    console.log(`Usage: pnpm --filter @language-coach/worker run stripe:setup -- [--webhook-url URL | --skip-webhook] [--yes]
 
 Creates or updates the Language Coach Premium product, its monthly, quarterly,
 and yearly prices, and the subscription webhook endpoint in Stripe.
@@ -136,6 +142,7 @@ Environment:
 
 Options:
   --webhook-url URL  Webhook endpoint (default: ${DEFAULT_WEBHOOK_URL})
+  --skip-webhook     Only create the product and prices (local testing with \`stripe listen\`)
   --yes              Skip the confirmation required for live-mode keys`);
     return;
   }
@@ -145,10 +152,11 @@ Options:
   if (!/^(sk|rk)_(test|live)_/.test(secretKey)) fatal("STRIPE_SECRET_KEY must be a Stripe secret or restricted key.");
   const live = secretKey.includes("_live_");
   const urlFlag = process.argv.indexOf("--webhook-url");
+  const skipWebhook = process.argv.includes("--skip-webhook");
   const webhookUrl = urlFlag >= 0 ? process.argv[urlFlag + 1] : DEFAULT_WEBHOOK_URL;
-  if (!webhookUrl?.startsWith("https://")) fatal("--webhook-url must be an https URL.");
+  if (!skipWebhook && !webhookUrl?.startsWith("https://")) fatal("--webhook-url must be an https URL.");
 
-  console.log(`Stripe mode: ${live ? "LIVE" : "test"}\nWebhook URL: ${webhookUrl}\n`);
+  console.log(`Stripe mode: ${live ? "LIVE" : "test"}\nWebhook URL: ${skipWebhook ? "(skipped)" : webhookUrl}\n`);
   if (live && !process.argv.includes("--yes")) {
     if (!process.stdin.isTTY) fatal("Live-mode setup needs interactive confirmation or --yes.");
     const prompt = createInterface({ input: process.stdin, output: process.stdout });
@@ -163,6 +171,14 @@ Options:
   const stripe = createStripe(secretKey);
   await ensureProduct(stripe);
   for (const plan of PLANS) await ensurePrice(stripe, plan);
+  if (skipWebhook) {
+    console.log(`
+Skipped the webhook endpoint. For local testing, forward events with the Stripe CLI:
+  stripe listen --events ${WEBHOOK_EVENTS.join(",")} \\
+    --forward-to localhost:8787/api/stripe/webhook
+and put the whsec_... it prints into apps/worker/.dev.vars as STRIPE_WEBHOOK_SECRET.`);
+    return;
+  }
   const webhookSecret = await ensureWebhook(stripe, webhookUrl);
 
   console.log(`

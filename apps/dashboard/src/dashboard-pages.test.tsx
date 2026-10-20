@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server"
 import { MemoryRouter } from "react-router-dom"
 import { describe, expect, it } from "vitest"
 
-import { ActivityPage, FlashcardsPage, PatternsPage, SettingsPage } from "@/App"
+import { ActivityPage, FlashcardsPage, PatternsPage, SettingsPage, syncPauseReason, type BillingPanelState } from "@/App"
 
 const data: DashboardData = {
   profile: { nativeLanguage: "Chinese", targetLanguage: "English", coachEnabled: true, updatedAt: "2026-10-04T00:00:00Z" },
@@ -66,5 +66,28 @@ describe("Dashboard page boundaries", () => {
     expect(html).toContain("Upload to your account")
     expect(html).toContain("Sign in")
     expect(html).not.toContain("Practice activity")
+  })
+
+  it("shows paused cloud upload when Premium no longer covers a device that turned sync on", () => {
+    const billing = (status: BillingPanelState["status"]): BillingPanelState => ({
+      offered: true, status, notice: "", error: "", onSubscribe: noop, onManage: noop,
+    })
+    const ended = { premium: false, required: true, checkoutAvailable: true, hasBillingAccount: true, status: "canceled", plan: "monthly" as const }
+    const syncing = { ...data, sync: { enabled: true, error: "Remote sync requires Language Coach Premium." } }
+    const html = renderToStaticMarkup(<MemoryRouter><SettingsPage data={syncing} saving={false} onSave={noop} mode="local"
+      syncChanging={false} onSyncToggle={noop} onSignOut={noop} billing={billing(ended)} /></MemoryRouter>)
+    expect(html).toContain("Cloud upload is paused")
+    expect(html).toContain("Renew Premium")
+    expect(html).toContain('data-paused="true"')
+    expect(html).not.toContain("Remote sync requires Language Coach Premium.")
+
+    expect(syncPauseReason(syncing.sync, { ...ended, status: "past_due", paymentOverdue: true }, "local")).toBe("overdue")
+    expect(syncPauseReason(syncing.sync, { ...ended, status: undefined }, "local")).toBe("required")
+    expect(syncPauseReason({ enabled: true, premiumRequired: true }, undefined, "local")).toBe("required")
+    expect(syncPauseReason(syncing.sync, { ...ended, premium: true, status: "active" }, "local")).toBeUndefined()
+    expect(syncPauseReason(syncing.sync, { ...ended, required: false }, "local")).toBeUndefined()
+    expect(syncPauseReason({ enabled: false }, ended, "local")).toBeUndefined()
+    expect(syncPauseReason(undefined, ended, "remote")).toBe("ended")
+    expect(syncPauseReason(undefined, { ...ended, status: undefined }, "remote")).toBeUndefined()
   })
 })

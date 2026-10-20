@@ -52,6 +52,7 @@ export function PremiumCard({ billing, signedIn, notice, error, pendingAction, o
   if (billing && !billing.required && !billing.premium && !billing.hasBillingAccount) return null
 
   const busy = Boolean(pendingAction)
+  const overdue = Boolean(billing?.paymentOverdue)
   const checkoutBlocked = signedIn && billing !== undefined && !billing.checkoutAvailable
 
   return (
@@ -74,6 +75,14 @@ export function PremiumCard({ billing, signedIn, notice, error, pendingAction, o
             <div>
               <strong>Premium is active</strong>
               <p>{premiumStatusText(billing)}</p>
+            </div>
+          </div>
+        ) : overdue ? (
+          <div className="sync-current-status" data-enabled={false}>
+            <span className="sync-status-dot" aria-hidden="true" />
+            <div>
+              <strong>Payment overdue</strong>
+              <p>Your last renewal payment did not go through. Update your payment method in Manage billing to restore Premium.</p>
             </div>
           </div>
         ) : (
@@ -114,7 +123,7 @@ export function PremiumCard({ billing, signedIn, notice, error, pendingAction, o
         {error && <p className="sync-error" role="alert">{error}</p>}
 
         <div className="premium-actions">
-          {!billing?.premium && (
+          {!billing?.premium && !overdue && (
             <Button disabled={busy || checkoutBlocked} onClick={() => void onSubscribe(selectedPlan)}>
               {pendingAction && pendingAction !== "portal"
                 ? "Opening secure checkout…"

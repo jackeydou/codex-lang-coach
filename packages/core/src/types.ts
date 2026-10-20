@@ -225,5 +225,7 @@ export interface BillingStatus {
   status?: string;
   currentPeriodEnd?: string;
   cancelAtPeriodEnd?: boolean;
+  /** A renewal payment failed and the grace period ended; the open subscription must be paid, not replaced. */
+  paymentOverdue?: boolean;
   hasBillingAccount: boolean;
 }

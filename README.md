@@ -354,7 +354,7 @@ The hosted service sells these plans:
 | Quarterly | $7.99 / 3 months | `language_coach_premium_quarterly` |
 | Yearly | $29.99 / year | `language_coach_premium_yearly` |
 
-When billing is on, the Worker checks Premium before it links a device (`POST /api/sync-tokens`) and before every upload (`POST /api/sync`), and returns `402 premium_required` when no subscription is active. Statuses `active`, `trialing`, and `past_due` (while Stripe retries a payment) count as Premium. Signed-in accounts can always view, delete, and revoke what is already stored, even after Premium ends. Local coaching and the local dashboard are always free.
+When billing is on, the Worker checks Premium before it links a device (`POST /api/sync-tokens`) and before every upload (`POST /api/sync`), and returns `402 premium_required` when no subscription is active. Statuses `active` and `trialing` count as Premium until 3 days after the period ends. A failed renewal (`past_due`) keeps Premium for 3 days after the last paid period ended, while Stripe retries the payment. After that, sync pauses and checkout is blocked until the customer updates their payment method in the customer portal, so the open subscription is not billed twice. Signed-in accounts can always view, delete, and revoke what is already stored, even after Premium ends. Local coaching and the local dashboard are always free.
 
 Billing endpoints:
 
@@ -394,7 +394,41 @@ To turn billing on for a deployment:
 5. In the Stripe Dashboard, open **Settings → Billing → Customer portal**. Allow cancellation and switching between the three prices, then save.
 6. Deploy with `pnpm deploy:cloudflare`.
 
-For local Worker development, put `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in `apps/worker/.dev.vars`, which is gitignored. Forward events with `stripe listen --forward-to localhost:8787/api/stripe/webhook`.
+To test billing end to end without deploying, run the Worker locally against a Neon branch and a Stripe test key:
+
+1. Create a Neon branch from `main`, and apply the migrations to it with the branch's owner connection string: `NEON_PRODUCTION_DATABASE_URL='postgresql://neondb_owner:...@<branch-host>/neondb?sslmode=require' pnpm --filter @language-coach/worker run migrate:production`.
+2. Create the product and prices without a webhook endpoint: `pnpm --filter @language-coach/worker run stripe:setup -- --skip-webhook`.
+3. Forward the subscription events to the local Worker and keep it running. It prints a `whsec_...` secret. Stripe CLI 1.54 and later requires `--events`:
+
+   ```bash
+   stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,customer.subscription.paused,customer.subscription.resumed \
+     --forward-to localhost:8787/api/stripe/webhook
+   ```
+4. Create the gitignored `apps/worker/.dev.vars`:
+
+   ```bash
+   STRIPE_SECRET_KEY=sk_test_...
+   STRIPE_WEBHOOK_SECRET=whsec_...   # from stripe listen
+   PREMIUM_SYNC_REQUIRED=true
+   ```
+
+5. Start the Worker on the branch's `language_coach_app` connection:
+
+   ```bash
+   export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE='postgresql://language_coach_app:...@<branch-host>/neondb?sslmode=require'
+   pnpm --filter @language-coach/worker dev
+   ```
+
+6. In another terminal, start the local dashboard against that Worker with a throwaway database and sync credential, then open `http://127.0.0.1:43128/dashboard/settings`:
+
+   ```bash
+   LANGUAGE_COACH_REMOTE_URL=http://127.0.0.1:8787 \
+   LANGUAGE_COACH_DB_PATH=/tmp/language-coach-billing.sqlite \
+   LANGUAGE_COACH_SYNC_CONFIG_PATH=/tmp/language-coach-billing-sync.json \
+   pnpm dev
+   ```
+
+   Pay with Stripe's test card `4242 4242 4242 4242`. The local plugin accepts plain `http` only for `localhost` and `127.0.0.1` sync servers.
 
 `PREMIUM_SYNC_REQUIRED` is a Worker secret rather than a `wrangler.jsonc` variable. Deployments stay free by default, and deploys never overwrite the setting. You can wait to add it until Checkout works end to end. Delete it (`wrangler secret delete PREMIUM_SYNC_REQUIRED`) to make sync free again. Repeat steps 3–6 with a live key to go live.
 

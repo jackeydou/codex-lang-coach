@@ -10,6 +10,7 @@ import {
   signStripePayload,
   subscriptionGrantsPremium,
   subscriptionPeriodEnd,
+  subscriptionPeriodStart,
   verifyStripeSignature,
   type StripeSubscription,
 } from "./stripe";
@@ -96,7 +97,7 @@ describe("Stripe subscription mapping", () => {
     status: "active",
     cancel_at_period_end: false,
     cancel_at: null,
-    items: { data: [{ price: { id: "price_1", lookup_key: null, recurring: { interval: "month", interval_count: 3 } }, current_period_end: 1_800_000_000 }] },
+    items: { data: [{ price: { id: "price_1", lookup_key: null, recurring: { interval: "month", interval_count: 3 } }, current_period_start: 1_792_000_000, current_period_end: 1_800_000_000 }] },
   };
 
   it("maps prices to plans by lookup key, then by billing interval", () => {
@@ -107,6 +108,7 @@ describe("Stripe subscription mapping", () => {
   });
 
   it("reads the billing period from subscription items", () => {
+    expect(subscriptionPeriodStart(subscription)).toBe(new Date(1_792_000_000 * 1000).toISOString());
     expect(subscriptionPeriodEnd(subscription)).toBe(new Date(1_800_000_000 * 1000).toISOString());
     expect(subscriptionPeriodEnd({ ...subscription, current_period_end: 1_700_000_000, items: { data: [] } }))
       .toBe(new Date(1_700_000_000 * 1000).toISOString());
@@ -115,11 +117,19 @@ describe("Stripe subscription mapping", () => {
   it("grants Premium only for paying statuses within the current period", () => {
     const now = Date.parse("2026-10-18T00:00:00Z");
     expect(subscriptionGrantsPremium({ status: "active", current_period_end: "2026-11-18T00:00:00Z" }, now)).toBe(true);
-    expect(subscriptionGrantsPremium({ status: "past_due", current_period_end: "2026-11-18T00:00:00Z" }, now)).toBe(true);
     expect(subscriptionGrantsPremium({ status: "active", current_period_end: "2026-10-16T00:00:00Z" }, now)).toBe(true);
     expect(subscriptionGrantsPremium({ status: "active", current_period_end: "2026-10-01T00:00:00Z" }, now)).toBe(false);
     expect(subscriptionGrantsPremium({ status: "canceled", current_period_end: "2026-11-18T00:00:00Z" }, now)).toBe(false);
     expect(subscriptionGrantsPremium({ status: "incomplete", current_period_end: null }, now)).toBe(false);
+  });
+
+  it("keeps Premium for a failed renewal only within the grace period after the paid period ended", () => {
+    const now = Date.parse("2026-10-18T00:00:00Z");
+    // The failed renewal already advanced the period, so its end is far away; only its start matters.
+    const unpaid = { status: "past_due", current_period_end: "2026-11-16T00:00:00Z" };
+    expect(subscriptionGrantsPremium({ ...unpaid, current_period_start: "2026-10-16T00:00:00Z" }, now)).toBe(true);
+    expect(subscriptionGrantsPremium({ ...unpaid, current_period_start: "2026-10-14T00:00:00Z" }, now)).toBe(false);
+    expect(subscriptionGrantsPremium({ ...unpaid, current_period_start: null }, now)).toBe(false);
   });
 
   it("finds the subscription referenced by checkout and subscription events", () => {

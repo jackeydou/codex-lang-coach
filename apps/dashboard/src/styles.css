@@ -211,6 +211,8 @@
 
 .sync-status-dot { width: 0.55rem; height: 0.55rem; margin-top: 0.32rem; border-radius: 50%; background: var(--muted-foreground); box-shadow: 0 0 0 4px color-mix(in oklch, var(--muted-foreground) 12%, transparent); }
 .sync-current-status[data-enabled="true"] .sync-status-dot { background: oklch(0.55 0.14 145); box-shadow: 0 0 0 4px oklch(0.55 0.14 145 / 0.13); }
+.sync-current-status[data-paused="true"] .sync-status-dot { background: oklch(0.72 0.15 70); box-shadow: 0 0 0 4px oklch(0.72 0.15 70 / 0.16); }
+.sync-paused-action { margin-top: 0.75rem; }
 .sync-current-status strong { display: block; font-size: 0.86rem; font-weight: 650; }
 .sync-current-status p { margin: 0.25rem 0 0; color: var(--muted-foreground); font-size: 0.79rem; line-height: 1.55; }
 .sync-current-status time { display: block; margin-top: 0.5rem; color: var(--muted-foreground); font-size: 0.72rem; }

@@ -384,12 +384,41 @@ function SettingsCard({ profile, saving, onSave }: {
   )
 }
 
-function AccountSyncCard({ mode, sync, user, changing, premiumLocked, onToggle, onSignOut }: {
+type SyncPause = "ended" | "overdue" | "required"
+
+/** Why uploads are paused for an account that turned sync on, if Premium does not cover it. */
+export function syncPauseReason(sync: SyncStatus | undefined, billing: BillingStatus | undefined, mode: "local" | "remote"): SyncPause | undefined {
+  if (mode === "local" && !sync?.enabled) return undefined
+  // The account's billing status is current; the device's last 402 is only a fallback before it loads.
+  const paused = billing ? billing.required && !billing.premium : mode === "local" && Boolean(sync?.premiumRequired)
+  if (!paused) return undefined
+  if (billing?.paymentOverdue) return "overdue"
+  if (billing?.status) return "ended"
+  // The web dashboard cannot tell whether a never-subscribed account ever uploaded, so it shows no pause.
+  return mode === "local" ? "required" : undefined
+}
+
+const SYNC_PAUSE_TEXT: Record<"local" | "remote", Record<SyncPause, string>> = {
+  local: {
+    ended: "Your Premium subscription has ended, so new notes are not uploaded. They stay queued on this computer and upload when you renew Premium.",
+    overdue: "Your last Premium payment did not go through, so new notes are not uploaded. They stay queued on this computer and upload once you update your payment method.",
+    required: "Cloud upload now requires Premium, so new notes are not uploaded. They stay queued on this computer and upload once you subscribe.",
+  },
+  remote: {
+    ended: "Your Premium subscription has ended, so your computers no longer upload new notes. Notes already in your account stay available here.",
+    overdue: "Your last Premium payment did not go through, so your computers no longer upload new notes. Update your payment method to resume.",
+    required: "Cloud upload requires Premium. Notes already in your account stay available here.",
+  },
+}
+
+function AccountSyncCard({ mode, sync, user, changing, premiumLocked, paused, onResume, onToggle, onSignOut }: {
   mode: "local" | "remote"
   sync?: SyncStatus
   user?: AuthUser
   changing: boolean
   premiumLocked: boolean
+  paused?: SyncPause
+  onResume?: () => void
   onToggle: (enabled: boolean) => Promise<void>
   onSignOut: () => Promise<void>
 }) {
@@ -398,11 +427,15 @@ function AccountSyncCard({ mode, sync, user, changing, premiumLocked, onToggle, 
     ? "Updating storage…"
     : sync?.state === "syncing"
       ? "Uploading notes…"
+    : paused
+      ? "Cloud upload is paused"
     : enabled
       ? "Cloud upload is on"
       : "Stored on this computer"
   const statusDescription = sync?.state === "syncing"
     ? `${sync.completedItems ?? 0} of ${sync.totalItems ?? 0} local items uploaded from this device.`
+    : paused
+    ? SYNC_PAUSE_TEXT[mode][paused]
     : enabled
     ? user?.email
       ? `Signed in as ${user.email}. This device uploads notes to your private account.`
@@ -454,7 +487,7 @@ function AccountSyncCard({ mode, sync, user, changing, premiumLocked, onToggle, 
           </div>
         )}
 
-        <div className="sync-current-status" data-enabled={enabled} aria-live="polite">
+        <div className="sync-current-status" data-enabled={enabled && !paused} data-paused={Boolean(paused)} aria-live="polite">
           <span className="sync-status-dot" aria-hidden="true" />
           <div>
             <strong>{statusTitle}</strong>
@@ -466,10 +499,15 @@ function AccountSyncCard({ mode, sync, user, changing, premiumLocked, onToggle, 
               </div>
             )}
             {sync?.lastSyncedAt && <time dateTime={sync.lastSyncedAt}>Last synced {new Date(sync.lastSyncedAt).toLocaleString()}.</time>}
+            {paused && onResume && (
+              <Button className="sync-paused-action" variant="outline" size="sm" onClick={onResume}>
+                {paused === "overdue" ? "Update payment method" : paused === "ended" ? "Renew Premium" : "Choose a plan"}
+              </Button>
+            )}
           </div>
         </div>
 
-        {sync?.error && <p className="sync-error" role="alert">{sync.error}</p>}
+        {sync?.error && !paused && <p className="sync-error" role="alert">{sync.error}</p>}
 
         {user ? (
           <div className="sync-account-row">
@@ -662,6 +700,7 @@ export function SettingsPage({ data, saving, onSave, mode, user, syncChanging, o
   openStandalone?: () => Promise<void>
   billing?: BillingPanelState
 }) {
+  const syncPaused = syncPauseReason(data.sync, billing?.status, mode)
   return (
     <div className="dashboard-page settings-page" id="main-content" tabIndex={-1}>
       <PageHeader title="Settings" description="Language and coaching preferences." />
@@ -669,11 +708,19 @@ export function SettingsPage({ data, saving, onSave, mode, user, syncChanging, o
         <SettingsCard profile={data.profile} saving={saving} onSave={onSave} />
         {openStandalone ? (
           <Card className="settings-editorial-card">
-            <CardHeader><CardTitle>Login &amp; sync</CardTitle><CardDescription>{data.sync?.enabled ? "Cloud upload is on." : "Your notes are stored on this computer."} Manage your account in the web dashboard.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Login &amp; sync</CardTitle><CardDescription>{syncPaused
+              ? "Cloud upload is paused because Premium is not active. New notes stay queued on this computer."
+              : data.sync?.enabled ? "Cloud upload is on." : "Your notes are stored on this computer."} Manage your account in the web dashboard.</CardDescription></CardHeader>
             <CardContent><Button variant="outline" onClick={() => void onSyncToggle(Boolean(data.sync?.enabled))}>Open web dashboard</Button></CardContent>
           </Card>
         ) : <AccountSyncCard mode={mode} sync={data.sync} user={user} changing={syncChanging}
           premiumLocked={mode === "local" && Boolean(billing?.offered) && !billing?.status?.premium}
+          paused={syncPaused}
+          onResume={billing && (() => {
+            // An overdue subscription is fixed in the billing portal; otherwise pick a plan on the Premium card.
+            if (syncPaused === "overdue") void billing.onManage()
+            else document.getElementById("premium")?.scrollIntoView({ behavior: "smooth", block: "start" })
+          })}
           onToggle={onSyncToggle} onSignOut={onSignOut} />}
         {!openStandalone && billing && (billing.offered || billing.status?.premium || billing.status?.hasBillingAccount) && <PremiumCard billing={billing.status} signedIn={Boolean(user)} notice={billing.notice}
           error={billing.error} pendingAction={billing.pendingAction} onSubscribe={billing.onSubscribe} onManage={billing.onManage} />}
