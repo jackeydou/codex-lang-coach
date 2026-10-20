@@ -1,4 +1,4 @@
-import type { DashboardData, DashboardStatus, DashboardRuntimeConfig, LanguageProfile, RemoteSyncConfig, NotesOrder, MarkReviewedInput, MarkReviewedResult } from "@language-coach/core"
+import type { BillingStatus, DashboardData, DashboardStatus, DashboardRuntimeConfig, LanguageProfile, PremiumPlan, RemoteSyncConfig, NotesOrder, MarkReviewedInput, MarkReviewedResult } from "@language-coach/core"
 
 import { ReviewError } from "@language-coach/core/review"
 
@@ -16,6 +16,13 @@ export class UnauthorizedError extends Error {
   constructor() {
     super("Authentication required.")
     this.name = "UnauthorizedError"
+  }
+}
+
+export class PremiumRequiredError extends Error {
+  constructor(message = "Remote sync requires Language Coach Premium.") {
+    super(message)
+    this.name = "PremiumRequiredError"
   }
 }
 
@@ -38,6 +45,7 @@ async function requestJson<T>(url: string, options: RequestInit = {}, token?: st
   if (response.status === 401) throw new UnauthorizedError()
   if (!response.ok) {
     const body = await response.json().catch(() => ({})) as { error?: string; code?: string; review?: MarkReviewedResult["review"] }
+    if (response.status === 402 || body.code === "premium_required") throw new PremiumRequiredError(body.error)
     if (body.code && ["INVALID_REQUEST", "NOT_FOUND", "VERSION_CONFLICT", "NOT_DUE", "SESSION_EXPIRED"].includes(body.code)) {
       throw new ReviewError(body.code as ReviewError["code"], body.error || "Review request failed.", body.review)
     }
@@ -54,7 +62,9 @@ export async function loadDashboardRuntime(
 
   try {
     const remote = await requestJson<DashboardRuntimeConfig>(`${current.remoteUrl.replace(/\/$/, "")}/api/config`)
-    return remote.authUrl ? { ...current, authUrl: remote.authUrl } : current
+    return remote.authUrl
+      ? { ...current, authUrl: remote.authUrl, premiumSyncRequired: remote.premiumSyncRequired }
+      : current
   } catch (error) {
     if (current.mode === "local") return current
     throw error
@@ -138,6 +148,32 @@ export class DashboardApi {
     await requestJson(`${remoteUrl}/api/sync-tokens/${encodeURIComponent(deviceId)}`, { method: "DELETE" }, sessionToken)
     await requestJson("/api/sync/configure", { method: "DELETE" })
     this.localDeviceId = undefined
+  }
+
+  getBilling(sessionToken: string): Promise<BillingStatus> {
+    return requestJson<BillingStatus>(`${this.remoteBaseUrl()}/api/billing`, {}, sessionToken)
+  }
+
+  async startCheckout(sessionToken: string, plan: PremiumPlan, returnUrl: string): Promise<string> {
+    const session = await requestJson<{ url: string }>(
+      `${this.remoteBaseUrl()}/api/billing/checkout`,
+      { method: "POST", body: JSON.stringify({ plan, returnUrl }) },
+      sessionToken,
+    )
+    return session.url
+  }
+
+  async openBillingPortal(sessionToken: string, returnUrl: string): Promise<string> {
+    const session = await requestJson<{ url: string }>(
+      `${this.remoteBaseUrl()}/api/billing/portal`,
+      { method: "POST", body: JSON.stringify({ returnUrl }) },
+      sessionToken,
+    )
+    return session.url
+  }
+
+  private remoteBaseUrl(): string {
+    return this.runtime.remoteUrl.replace(/\/$/, "")
   }
 
   private assertLocalMode(): void {

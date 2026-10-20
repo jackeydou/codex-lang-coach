@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from "react"
-import type { DashboardData, DashboardRuntimeConfig, LanguageProfile, SyncStatus, DashboardNote, NotesOrder, MarkReviewedInput } from "@language-coach/core"
+import type { BillingStatus, DashboardData, DashboardRuntimeConfig, LanguageProfile, SyncStatus, DashboardNote, NotesOrder, MarkReviewedInput, PremiumPlan } from "@language-coach/core"
 import { ActivityIcon, ArrowLeftIcon, ArrowRightIcon, BookOpenCheckIcon, CheckIcon, ChevronRightIcon, CloudIcon, FlameIcon, LayersIcon, LaptopIcon, LightbulbIcon, LogInIcon, Repeat2Icon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 
@@ -9,6 +9,7 @@ import { ActivityChart, CategoryChart, LanguageUseChart } from "@/components/ana
 import { LandingPage } from "@/LandingPage"
 import { LegalPage } from "@/LegalPage"
 import { NoteFlashcard } from "@/components/note-flashcard"
+import { PremiumCard } from "@/components/premium-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -18,7 +19,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupConte
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { createDashboardApi, type DashboardApi, type LearningDashboardClient, loadDashboardRuntime, UnauthorizedError } from "@/dashboard-api"
+import { createDashboardApi, type DashboardApi, type LearningDashboardClient, loadDashboardRuntime, PremiumRequiredError, UnauthorizedError } from "@/dashboard-api"
 import { ReviewError } from "@language-coach/core/review"
 import { applyReview, mergeNotes, preserveReviews } from "@/review-state"
 import { useDashboardStatusPolling } from "@/hooks/use-dashboard-status-polling"
@@ -383,11 +384,41 @@ function SettingsCard({ profile, saving, onSave }: {
   )
 }
 
-function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
+type SyncPause = "ended" | "overdue" | "required"
+
+/** Why uploads are paused for an account that turned sync on, if Premium does not cover it. */
+export function syncPauseReason(sync: SyncStatus | undefined, billing: BillingStatus | undefined, mode: "local" | "remote"): SyncPause | undefined {
+  if (mode === "local" && !sync?.enabled) return undefined
+  // The account's billing status is current; the device's last 402 is only a fallback before it loads.
+  const paused = billing ? billing.required && !billing.premium : mode === "local" && Boolean(sync?.premiumRequired)
+  if (!paused) return undefined
+  if (billing?.paymentOverdue) return "overdue"
+  if (billing?.status) return "ended"
+  // The web dashboard cannot tell whether a never-subscribed account ever uploaded, so it shows no pause.
+  return mode === "local" ? "required" : undefined
+}
+
+const SYNC_PAUSE_TEXT: Record<"local" | "remote", Record<SyncPause, string>> = {
+  local: {
+    ended: "Your Premium subscription has ended, so new notes are not uploaded. They stay queued on this computer and upload when you renew Premium.",
+    overdue: "Your last Premium payment did not go through, so new notes are not uploaded. They stay queued on this computer and upload once you update your payment method.",
+    required: "Cloud upload now requires Premium, so new notes are not uploaded. They stay queued on this computer and upload once you subscribe.",
+  },
+  remote: {
+    ended: "Your Premium subscription has ended, so your computers no longer upload new notes. Notes already in your account stay available here.",
+    overdue: "Your last Premium payment did not go through, so your computers no longer upload new notes. Update your payment method to resume.",
+    required: "Cloud upload requires Premium. Notes already in your account stay available here.",
+  },
+}
+
+function AccountSyncCard({ mode, sync, user, changing, premiumLocked, paused, onResume, onToggle, onSignOut }: {
   mode: "local" | "remote"
   sync?: SyncStatus
   user?: AuthUser
   changing: boolean
+  premiumLocked: boolean
+  paused?: SyncPause
+  onResume?: () => void
   onToggle: (enabled: boolean) => Promise<void>
   onSignOut: () => Promise<void>
 }) {
@@ -396,11 +427,15 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
     ? "Updating storage…"
     : sync?.state === "syncing"
       ? "Uploading notes…"
+    : paused
+      ? "Cloud upload is paused"
     : enabled
       ? "Cloud upload is on"
       : "Stored on this computer"
   const statusDescription = sync?.state === "syncing"
     ? `${sync.completedItems ?? 0} of ${sync.totalItems ?? 0} local items uploaded from this device.`
+    : paused
+    ? SYNC_PAUSE_TEXT[mode][paused]
     : enabled
     ? user?.email
       ? `Signed in as ${user.email}. This device uploads notes to your private account.`
@@ -443,13 +478,16 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
               onClick={() => { if (!enabled) void onToggle(true) }}
             >
               <span className="sync-option-icon"><CloudIcon /></span>
-              <span className="sync-option-copy"><strong>Upload to your account</strong><span>Combine this device's notes on the web</span></span>
+              <span className="sync-option-copy">
+                <strong>Upload to your account{premiumLocked && <span className="sync-premium-badge">Premium</span>}</strong>
+                <span>Combine this device's notes on the web</span>
+              </span>
               <span className="sync-option-check" aria-hidden="true"><CheckIcon /></span>
             </button>
           </div>
         )}
 
-        <div className="sync-current-status" data-enabled={enabled} aria-live="polite">
+        <div className="sync-current-status" data-enabled={enabled && !paused} data-paused={Boolean(paused)} aria-live="polite">
           <span className="sync-status-dot" aria-hidden="true" />
           <div>
             <strong>{statusTitle}</strong>
@@ -461,10 +499,15 @@ function AccountSyncCard({ mode, sync, user, changing, onToggle, onSignOut }: {
               </div>
             )}
             {sync?.lastSyncedAt && <time dateTime={sync.lastSyncedAt}>Last synced {new Date(sync.lastSyncedAt).toLocaleString()}.</time>}
+            {paused && onResume && (
+              <Button className="sync-paused-action" variant="outline" size="sm" onClick={onResume}>
+                {paused === "overdue" ? "Update payment method" : paused === "ended" ? "Renew Premium" : "Choose a plan"}
+              </Button>
+            )}
           </div>
         </div>
 
-        {sync?.error && <p className="sync-error" role="alert">{sync.error}</p>}
+        {sync?.error && !paused && <p className="sync-error" role="alert">{sync.error}</p>}
 
         {user ? (
           <div className="sync-account-row">
@@ -634,7 +677,18 @@ export function ActivityPage({ data }: { data: DashboardData }) {
   )
 }
 
-export function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncToggle, onSignOut, openStandalone }: {
+export type BillingPanelState = {
+  /** Whether this deployment sells remote sync as Premium. Self-hosted instances leave it off. */
+  offered: boolean
+  status?: BillingStatus
+  notice: string
+  error: string
+  pendingAction?: PremiumPlan | "portal"
+  onSubscribe: (plan: PremiumPlan) => Promise<void>
+  onManage: () => Promise<void>
+}
+
+export function SettingsPage({ data, saving, onSave, mode, user, syncChanging, onSyncToggle, onSignOut, openStandalone, billing }: {
   data: DashboardData
   saving: boolean
   onSave: (profile: Pick<LanguageProfile, "nativeLanguage" | "targetLanguage" | "coachEnabled">) => Promise<void>
@@ -644,7 +698,9 @@ export function SettingsPage({ data, saving, onSave, mode, user, syncChanging, o
   onSyncToggle: (enabled: boolean) => Promise<void>
   onSignOut: () => Promise<void>
   openStandalone?: () => Promise<void>
+  billing?: BillingPanelState
 }) {
+  const syncPaused = syncPauseReason(data.sync, billing?.status, mode)
   return (
     <div className="dashboard-page settings-page" id="main-content" tabIndex={-1}>
       <PageHeader title="Settings" description="Language and coaching preferences." />
@@ -652,10 +708,22 @@ export function SettingsPage({ data, saving, onSave, mode, user, syncChanging, o
         <SettingsCard profile={data.profile} saving={saving} onSave={onSave} />
         {openStandalone ? (
           <Card className="settings-editorial-card">
-            <CardHeader><CardTitle>Login &amp; sync</CardTitle><CardDescription>{data.sync?.enabled ? "Cloud upload is on." : "Your notes are stored on this computer."} Manage your account in the web dashboard.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Login &amp; sync</CardTitle><CardDescription>{syncPaused
+              ? "Cloud upload is paused because Premium is not active. New notes stay queued on this computer."
+              : data.sync?.enabled ? "Cloud upload is on." : "Your notes are stored on this computer."} Manage your account in the web dashboard.</CardDescription></CardHeader>
             <CardContent><Button variant="outline" onClick={() => void onSyncToggle(Boolean(data.sync?.enabled))}>Open web dashboard</Button></CardContent>
           </Card>
-        ) : <AccountSyncCard mode={mode} sync={data.sync} user={user} changing={syncChanging} onToggle={onSyncToggle} onSignOut={onSignOut} />}
+        ) : <AccountSyncCard mode={mode} sync={data.sync} user={user} changing={syncChanging}
+          premiumLocked={mode === "local" && Boolean(billing?.offered) && !billing?.status?.premium}
+          paused={syncPaused}
+          onResume={billing && (() => {
+            // An overdue subscription is fixed in the billing portal; otherwise pick a plan on the Premium card.
+            if (syncPaused === "overdue") void billing.onManage()
+            else document.getElementById("premium")?.scrollIntoView({ behavior: "smooth", block: "start" })
+          })}
+          onToggle={onSyncToggle} onSignOut={onSignOut} />}
+        {!openStandalone && billing && (billing.offered || billing.status?.premium || billing.status?.hasBillingAccount) && <PremiumCard billing={billing.status} signedIn={Boolean(user)} notice={billing.notice}
+          error={billing.error} pendingAction={billing.pendingAction} onSubscribe={billing.onSubscribe} onManage={billing.onManage} />}
       </div>
     </div>
   )
@@ -685,6 +753,16 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
   const [reviewBusy, setReviewBusy] = useState(0)
   const reviewRequests = useRef(new Map<string, MarkReviewedInput>())
   const reviewInFlight = useRef(new Map<string, Promise<void>>())
+  const [billing, setBilling] = useState<BillingStatus>()
+  const [billingNotice, setBillingNotice] = useState("")
+  const [billingError, setBillingError] = useState("")
+  const [billingAction, setBillingAction] = useState<PremiumPlan | "portal">()
+  const [billingReturn] = useState(() => {
+    if (embedded) return null
+    const params = new URLSearchParams(window.location.search)
+    return params.get("billing") ?? (params.get("premium") === "required" ? "required" : null)
+  })
+  const billingReturnHandled = useRef(false)
   const webApi = useMemo(() => !embedded && runtime ? createDashboardApi(runtime, accessToken || undefined) : undefined, [accessToken, runtime, embedded])
   const api: LearningDashboardClient | undefined = embedded?.client || webApi
 
@@ -774,6 +852,91 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
     onError: (error) => setSyncError(error instanceof Error ? error.message : "Dashboard status could not be loaded."),
   })
 
+  useEffect(() => {
+    if (!webApi || !accessToken) return
+    let active = true
+    void webApi.getBilling(accessToken)
+      .then((next) => { if (active) setBilling(next) })
+      .catch(() => undefined)
+    return () => { active = false }
+  }, [accessToken, webApi])
+
+  function showPremiumRequired() {
+    setBillingNotice("Remote sync is a Premium feature. Choose a plan below to start uploading notes.")
+    window.setTimeout(() => document.getElementById("premium")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0)
+  }
+
+  useEffect(() => {
+    if (!billingReturn || billingReturnHandled.current) return
+    if (billingReturn !== "success") {
+      billingReturnHandled.current = true
+      if (billingReturn === "cancelled") setBillingNotice("Checkout was cancelled. You have not been charged.")
+      else showPremiumRequired()
+      navigate("/dashboard/settings", { replace: true })
+      return
+    }
+    setBillingNotice("Payment received. Activating Premium…")
+    if (!webApi || !accessToken || !user || !data || !runtime) return
+    billingReturnHandled.current = true
+    navigate("/dashboard/settings", { replace: true })
+    const client = webApi
+    const token = accessToken
+    const currentUser = user
+    const shouldEnableSync = runtime.mode === "local" && !data.sync?.enabled
+
+    void (async () => {
+      // Stripe confirms the subscription through a webhook, which can land a moment after the redirect.
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const next = await client.getBilling(token).catch(() => undefined)
+        if (next) setBilling(next)
+        if (next?.premium) {
+          setBillingNotice("Premium is active. Thank you for supporting Language Coach!")
+          if (shouldEnableSync) {
+            setSyncChanging(true)
+            try {
+              await enableSync(client, token, currentUser)
+            } catch (syncError) {
+              setSyncError(syncError instanceof Error ? syncError.message : "Sync could not be turned on.")
+            } finally {
+              setSyncChanging(false)
+            }
+          }
+          return
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1500))
+      }
+      setBillingNotice("Your payment is still being confirmed. Refresh this page in a minute if Premium does not appear.")
+    })()
+  }, [accessToken, billingReturn, data, navigate, runtime, user, webApi])
+
+  async function subscribe(plan: PremiumPlan) {
+    if (!webApi) return
+    if (!accessToken) {
+      navigate(`/sign-in?intent=sync&returnTo=${encodeURIComponent("/dashboard/settings")}`)
+      return
+    }
+    setBillingAction(plan)
+    setBillingError("")
+    try {
+      window.location.assign(await webApi.startCheckout(accessToken, plan, `${window.location.origin}/dashboard/settings`))
+    } catch (checkoutError) {
+      setBillingError(checkoutError instanceof Error ? checkoutError.message : "Checkout could not be started.")
+      setBillingAction(undefined)
+    }
+  }
+
+  async function manageBilling() {
+    if (!webApi || !accessToken) return
+    setBillingAction("portal")
+    setBillingError("")
+    try {
+      window.location.assign(await webApi.openBillingPortal(accessToken, `${window.location.origin}/dashboard/settings`))
+    } catch (portalError) {
+      setBillingError(portalError instanceof Error ? portalError.message : "Billing settings could not be opened.")
+      setBillingAction(undefined)
+    }
+  }
+
   function setSyncError(message: string) {
     setData((current) => current ? {
       ...current,
@@ -804,12 +967,17 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
       navigate(`/sign-in?intent=${intent}&returnTo=${encodeURIComponent("/dashboard/settings")}`)
       return
     }
+    if (enabled && billing?.required && !billing.premium) {
+      showPremiumRequired()
+      return
+    }
     setSyncChanging(true)
     try {
       if (enabled) await enableSync(webApi, accessToken, user)
       else await disableSync(webApi, accessToken)
     } catch (actionError) {
-      setSyncError(actionError instanceof Error ? actionError.message : "The sync setting could not be changed.")
+      if (actionError instanceof PremiumRequiredError) showPremiumRequired()
+      else setSyncError(actionError instanceof Error ? actionError.message : "The sync setting could not be changed.")
     } finally {
       setSyncChanging(false)
     }
@@ -819,6 +987,7 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
     await auth?.adapter.signOut()
     setAccessToken("")
     setUser(undefined)
+    setBilling(undefined)
     if (runtime?.mode === "remote") {
       setData(undefined)
       navigate("/sign-in", { replace: true })
@@ -916,7 +1085,8 @@ export function DashboardApp({ embedded }: { embedded?: { client: LearningDashbo
       {error && <p role="alert" className="p-4 text-destructive">{error}</p>}
       <DashboardShell page={page} user={user}>
         {settingsPage
-          ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} openStandalone={embedded?.openStandalone} />
+          ? <SettingsPage data={data} saving={saving} onSave={saveProfile} mode={runtime.mode} user={user} syncChanging={syncChanging} onSyncToggle={toggleSync} onSignOut={signOut} openStandalone={embedded?.openStandalone}
+              billing={embedded ? undefined : { offered: Boolean(runtime.premiumSyncRequired), status: billing, notice: billingNotice, error: billingError, pendingAction: billingAction, onSubscribe: subscribe, onManage: manageBilling }} />
           : page === "activity" ? <ActivityPage data={data} />
           : page === "patterns" ? <PatternsPage data={data} />
           : <FlashcardsPage data={data} loadingMore={loadingMore || refreshing || paginationFailed} onLoadMore={loadMoreNotes} onDelete={deleteNote}

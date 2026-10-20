@@ -6,6 +6,7 @@ import {
   CORRECTION_CATEGORIES,
   EXAMPLE_CONTEXTS,
   INPUT_LANGUAGE_KINDS,
+  PremiumRequiredError,
   type LearningStore,
   type RemoteLearningSync,
 } from "@language-coach/core";
@@ -212,7 +213,15 @@ export function createLanguageCoachMcpServer({
     if (!remoteSync.status.enabled) {
       return result({ configured: false }, "Remote sync is not configured.");
     }
-    const upload = await remoteSync.sync();
+    let upload;
+    try {
+      upload = await remoteSync.sync();
+    } catch (error) {
+      if (error instanceof PremiumRequiredError) {
+        return result({ configured: true, premiumRequired: true }, error.message);
+      }
+      throw error;
+    }
     return result({ configured: true, notes: upload.acceptedNotes, deletions: upload.acceptedDeletions }, `Uploaded ${upload.acceptedNotes} learning notes.`);
   });
 

@@ -14,6 +14,7 @@ await mkdir(target, { recursive: true });
 for (const entry of ["assets", "skills"]) {
   await cp(join(source, entry), join(target, entry), { recursive: true });
 }
+await cp(join(root, "LICENSE"), join(target, "LICENSE"));
 
 await cp(join(packaging, "plugin.json"), join(target, "plugin.json"));
 await cp(join(packaging, "mcp.json"), join(target, "mcp.json"));
@@ -30,7 +31,7 @@ await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
 for (const relativePath of [
   "plugin.json", "mcp.json", "assets/icon.png", "assets/logo.png",
-  "skills/language-coach/SKILL.md", "mcp/server.mjs", "dashboard/dist/index.html",
+  "skills/language-coach/SKILL.md", "LICENSE", "mcp/server.mjs", "dashboard/dist/index.html",
 ]) {
   await readFile(join(target, relativePath));
 }

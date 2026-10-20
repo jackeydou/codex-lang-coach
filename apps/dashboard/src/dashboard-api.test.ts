@@ -1,7 +1,7 @@
 import type { DashboardData, DashboardRuntimeConfig } from "@language-coach/core"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { createDashboardApi, loadDashboardRuntime, UnauthorizedError } from "@/dashboard-api"
+import { createDashboardApi, loadDashboardRuntime, PremiumRequiredError, UnauthorizedError } from "@/dashboard-api"
 
 const dashboard: DashboardData = {
   profile: {
@@ -170,3 +170,40 @@ it("uses the existing remote recent endpoint when polling remote status", async 
     headers: expect.objectContaining({ authorization: "Bearer session-jwt" }),
   }))
 })
+
+it("learns from the remote service whether it sells Premium sync", async () => {
+  vi.spyOn(globalThis, "fetch")
+    .mockResolvedValueOnce(json({ mode: "local", remoteUrl: "https://remote.example" }))
+    .mockResolvedValueOnce(json({ mode: "remote", remoteUrl: "https://remote.example", authUrl: "https://auth.example", premiumSyncRequired: true }))
+
+  await expect(loadDashboardRuntime({ includeRemoteAuth: true })).resolves.toMatchObject({
+    mode: "local",
+    authUrl: "https://auth.example",
+    premiumSyncRequired: true,
+  })
+})
+
+describe("DashboardApi billing", () => {
+  const localRuntime: DashboardRuntimeConfig = { mode: "local", remoteUrl: "https://remote.example/" }
+
+  it("starts checkout on the remote service with the signed-in session", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ url: "https://checkout.stripe.com/c/pay/cs_1" }))
+    const api = createDashboardApi(localRuntime)
+
+    await expect(api.startCheckout("session-token", "yearly", "http://localhost:43127/dashboard/settings"))
+      .resolves.toBe("https://checkout.stripe.com/c/pay/cs_1")
+    expect(fetchMock).toHaveBeenCalledWith("https://remote.example/api/billing/checkout", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ plan: "yearly", returnUrl: "http://localhost:43127/dashboard/settings" }),
+      headers: expect.objectContaining({ authorization: "Bearer session-token" }),
+    }))
+  })
+
+  it("turns a premium-required response into a typed error when linking a device", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(json({ error: "Premium needed.", code: "premium_required" }, 402))
+    const api = createDashboardApi(localRuntime)
+
+    await expect(api.enableLocalSync("session-token")).rejects.toBeInstanceOf(PremiumRequiredError)
+  })
+})
+

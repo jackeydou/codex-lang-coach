@@ -7,9 +7,11 @@
     "build": "wrangler deploy --dry-run --outdir dist",
     "check": "tsc -p tsconfig.json --noEmit",
     "deploy": "pnpm --filter @language-coach/dashboard build && wrangler deploy",
-    "dev": "pnpm --filter @language-coach/dashboard build && wrangler dev",
+    "dev": "pnpm --filter @language-coach/dashboard build && node scripts/dev.mjs",
     "migrate:production": "node scripts/migrate-production.mjs",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "stripe:setup": "node scripts/stripe-setup.mjs",
+    "stripe:listen": "node scripts/stripe-listen.mjs"
   },
   "dependencies": {
     "@language-coach/core": "workspace:*",

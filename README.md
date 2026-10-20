@@ -18,6 +18,7 @@ The project includes a Codex plugin, an MCP interface, a local Node.js runtime, 
 - Includes a local dashboard for reviewing and deleting learning notes.
 - Stores data locally in SQLite by default.
 - Lets users opt into registration, verified-email login, and remote sync.
+- Can sell remote sync as an optional Premium subscription through Stripe Checkout. Self-hosted deployments stay free unless they turn billing on.
 - Stores remote notes in Neon Postgres through Cloudflare Hyperdrive.
 - Enforces account ownership in both the Worker API and Postgres row-level security policies.
 - Deploys the authenticated dashboard as a Cloudflare Worker website.
@@ -308,7 +309,7 @@ The hosted dashboard uses Cloudflare Workers Static Assets, Cloudflare Hyperdriv
 
 Remote tables contain a `user_id` on every row. The Worker derives that ID from a verified Neon JWT or a hashed local-device sync token, sets it in the Postgres transaction, and row-level security enforces the same ownership rule in the database. The Hyperdrive connection must use the limited `language_coach_app` role rather than `neondb_owner`, because owner roles bypass RLS.
 
-Local use remains account-free by default. Open **Settings → Login & sync** to register or sign in and upload the local notes for that account. The local device credential is stored at `~/.language-coach/remote-sync.json` with owner-only permissions. Turning sync off re-authenticates, revokes the remote device tokens, and removes the local credential. Deletion tombstones prevent deleted notes from reappearing during a later merge.
+Local use remains account-free and free of charge. On the official hosted service, remote sync is a Premium feature (see [Premium billing with Stripe](#premium-billing-with-stripe)). Open **Settings → Login & sync** to register or sign in and upload the local notes for that account. The local device credential is stored at `~/.language-coach/remote-sync.json` with owner-only permissions. Turning sync off re-authenticates, revokes the remote device tokens, and removes the local credential. Deletion tombstones prevent deleted notes from reappearing during a later merge.
 
 ### Provision Neon and Hyperdrive
 
@@ -340,6 +341,97 @@ Deploy from the repository root:
 ```bash
 pnpm deploy:cloudflare
 ```
+
+### Premium billing with Stripe
+
+Language Coach is open source, and every feature works when you self-host it. The official hosted service at `https://language-coach.pluginsfoundry.dev` charges for remote sync to cover its database and hosting costs. Billing is off by default. A deployment sells Premium only when it sets `PREMIUM_SYNC_REQUIRED=true`. Without that setting, sync is free for every signed-in account and the dashboard shows no prices.
+
+The hosted service sells these plans:
+
+| Plan | Price | Stripe lookup key |
+| --- | --- | --- |
+| Monthly | $2.99 / month | `language_coach_premium_monthly` |
+| Quarterly | $7.99 / 3 months | `language_coach_premium_quarterly` |
+| Yearly | $29.99 / year | `language_coach_premium_yearly` |
+
+When billing is on, the Worker checks Premium before it links a device (`POST /api/sync-tokens`) and before every upload (`POST /api/sync`), and returns `402 premium_required` when no subscription is active. Statuses `active` and `trialing` count as Premium until 3 days after the period ends. A failed renewal (`past_due`) keeps Premium for 3 days after the last paid period ended, while Stripe retries the payment. After that, sync pauses and checkout is blocked until the customer updates their payment method in the customer portal, so the open subscription is not billed twice. Signed-in accounts can always view, delete, and revoke what is already stored, even after Premium ends. Local coaching and the local dashboard are always free.
+
+Billing endpoints:
+
+- `GET /api/billing` returns the account's `BillingStatus`.
+- `POST /api/billing/checkout` with `{ plan, returnUrl }` starts a Stripe Checkout subscription session.
+- `POST /api/billing/portal` with `{ returnUrl }` opens the Stripe customer portal for plan changes, payment methods, invoices, and cancellation.
+- `POST /api/stripe/webhook` receives signed Stripe events. On each event, the Worker re-reads the subscription from Stripe and stores it in `billing_subscriptions` (row-level security applies, as for every other table).
+
+`returnUrl` must be a `/dashboard…` URL on the Worker origin or on a `http://localhost` / `http://127.0.0.1` dashboard. That way, both the hosted and the local dashboard can send users through Checkout and back.
+
+To turn billing on for a deployment:
+
+1. Apply the billing migration (`0004_billing.sql`) with `pnpm --filter @language-coach/worker run migrate:production`.
+2. Put your Stripe key in the gitignored `mise.local.toml`. Use a test key first:
+
+   ```toml
+   [env]
+   STRIPE_SECRET_KEY = "sk_test_..."
+   ```
+
+3. Create the product, the three prices, and the webhook endpoint:
+
+   ```bash
+   mise run stripe:setup
+   # or: pnpm --filter @language-coach/worker run stripe:setup -- --webhook-url https://<your-domain>/api/stripe/webhook
+   ```
+
+   You can run the script more than once. It reuses matching prices by lookup key and prints the webhook signing secret when it creates the endpoint.
+4. Store the Worker secrets:
+
+   ```bash
+   pnpm --filter @language-coach/worker exec wrangler secret put STRIPE_SECRET_KEY
+   pnpm --filter @language-coach/worker exec wrangler secret put STRIPE_WEBHOOK_SECRET
+   pnpm --filter @language-coach/worker exec wrangler secret put PREMIUM_SYNC_REQUIRED   # enter: true
+   ```
+
+5. In the Stripe Dashboard, open **Settings → Billing → Customer portal**. Allow cancellation and switching between the three prices, then save.
+6. Deploy with `pnpm deploy:cloudflare`.
+
+To test billing end to end without deploying, run the Worker locally against a Neon branch and a Stripe test key:
+
+1. Create a Neon branch from `main`, and apply the migrations to it with the branch's owner connection string: `NEON_PRODUCTION_DATABASE_URL='postgresql://neondb_owner:...@<branch-host>/neondb?sslmode=require' pnpm --filter @language-coach/worker run migrate:production`.
+2. Create the product and prices without a webhook endpoint: `pnpm --filter @language-coach/worker run stripe:setup -- --skip-webhook`.
+3. Create the gitignored `apps/worker/.dev.vars`:
+
+   ```bash
+   STRIPE_SECRET_KEY=sk_test_...
+   STRIPE_WEBHOOK_SECRET=whsec_...   # from: stripe listen --api-key "$STRIPE_SECRET_KEY" --print-secret
+   PREMIUM_SYNC_REQUIRED=true
+   ```
+
+4. Point local Hyperdrive at the branch's `language_coach_app` connection. You can put this in the `[env]` section of `mise.local.toml` instead of exporting it:
+
+   ```bash
+   export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE='postgresql://language_coach_app:...@<branch-host>/neondb?sslmode=require'
+   ```
+
+5. Start the Worker:
+
+   ```bash
+   mise run worker:dev
+   ```
+
+   With a Stripe test or sandbox key in `STRIPE_SECRET_KEY` and the [Stripe CLI](https://docs.stripe.com/stripe-cli) installed, this also runs `stripe listen` and forwards the subscription events to the Worker. It warns when `.dev.vars` has a different signing secret. Live keys are never forwarded. Run `mise run stripe:listen` to forward events on its own.
+
+6. In another terminal, start the local dashboard against that Worker with a throwaway database and sync credential, then open `http://127.0.0.1:43128/dashboard/settings`:
+
+   ```bash
+   LANGUAGE_COACH_REMOTE_URL=http://127.0.0.1:8787 \
+   LANGUAGE_COACH_DB_PATH=/tmp/language-coach-billing.sqlite \
+   LANGUAGE_COACH_SYNC_CONFIG_PATH=/tmp/language-coach-billing-sync.json \
+   pnpm dev
+   ```
+
+   Pay with Stripe's test card `4242 4242 4242 4242`. The local plugin accepts plain `http` only for `localhost` and `127.0.0.1` sync servers.
+
+`PREMIUM_SYNC_REQUIRED` is a Worker secret rather than a `wrangler.jsonc` variable. Deployments stay free by default, and deploys never overwrite the setting. You can wait to add it until Checkout works end to end. Delete it (`wrangler secret delete PREMIUM_SYNC_REQUIRED`) to make sync free again. To go live, repeat steps 3–6 of turning billing on with a live key.
 
 The deployed site works at `https://language-coach.pluginsfoundry.dev`. The built local dashboard remains available at `http://localhost:43127`. Set `LANGUAGE_COACH_REMOTE_URL` only when the local build should discover a different deployed Worker.
 
@@ -462,4 +554,8 @@ The resulting plugin must:
 
 ## License
 
-This project is licensed under the [MIT License](./LICENSE).
+Language Coach is licensed under the [GNU Affero General Public License v3.0](./LICENSE) (`AGPL-3.0-only`).
+
+You may use, modify, and self-host it freely. If you distribute a modified version, or let people use one over a network (for example, as a hosted sync service), you must make your modified source code available to those users under the same license.
+
+Versions released before this change remain available under the MIT License.

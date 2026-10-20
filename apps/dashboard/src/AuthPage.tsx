@@ -6,7 +6,7 @@ import { initializeAuth, readAuthSession, type AuthClient, type AuthSession } fr
 import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { createDashboardApi } from "@/dashboard-api"
+import { createDashboardApi, PremiumRequiredError } from "@/dashboard-api"
 
 type AuthMode = "sign-in" | "sign-up"
 type AuthIntent = "sync" | "disable" | null
@@ -84,7 +84,13 @@ export function AuthPage({ mode }: { mode: AuthMode }) {
     if (!runtime) throw new Error("Remote sync is not configured.")
     const api = createDashboardApi(runtime, session.token)
     if (intent === "sync") {
-      await api.enableLocalSync(session.token)
+      try {
+        await api.enableLocalSync(session.token)
+      } catch (syncError) {
+        if (!(syncError instanceof PremiumRequiredError)) throw syncError
+        navigate("/dashboard/settings?premium=required", { replace: true })
+        return
+      }
     } else if (intent === "disable") {
       await api.disableLocalSync(session.token)
     }

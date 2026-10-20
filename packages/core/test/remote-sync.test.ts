@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RemoteLearningSync } from "../src/remote-sync.js";
+import { PremiumRequiredError, RemoteLearningSync } from "../src/remote-sync.js";
 import { SqliteLearningStore } from "../src/storage.js";
 import type { SyncUploadBatch } from "../src/types.js";
 
@@ -18,7 +18,8 @@ describe("RemoteLearningSync", () => {
     const directory = mkdtempSync(join(tmpdir(), "language-coach-sync-test-"));
     temporaryDirectories.push(directory);
     const store = new SqliteLearningStore(join(directory, "notes.sqlite"));
-    for (let index = 0; index < 205; index += 1) {
+    // Two full batches and a remainder prove the batch bound without slow, per-note disk writes on CI.
+    for (let index = 0; index < 45; index += 1) {
       store.saveNote({
         turnId: `turn-${index}`,
         inputLanguage: "target",
@@ -56,15 +57,15 @@ describe("RemoteLearningSync", () => {
       deviceName: "Test laptop",
     });
 
-    await expect(sync.sync()).resolves.toMatchObject({ acceptedNotes: 205, deviceId });
-    expect(batches.map((batch) => batch.notes.length)).toEqual([20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 5]);
+    await expect(sync.sync()).resolves.toMatchObject({ acceptedNotes: 45, deviceId });
+    expect(batches.map((batch) => batch.notes.length)).toEqual([20, 20, 5]);
     expect(batches.every((batch) => batch.deviceId === deviceId)).toBe(true);
     expect(batches[0]?.profile).toEqual(store.getProfile());
     expect(batches.slice(1).every((batch) => batch.profile === undefined)).toBe(true);
     expect(requests[0]?.headers).toEqual(expect.objectContaining({
       "user-agent": "Language-Coach/0.1 (+https://language-coach.pluginsfoundry.dev)",
     }));
-    expect(sync.status).toMatchObject({ state: "idle", completedItems: 205, totalItems: 205 });
+    expect(sync.status).toMatchObject({ state: "idle", completedItems: 45, totalItems: 45 });
     store.close();
   });
 
@@ -163,6 +164,58 @@ describe("RemoteLearningSync", () => {
     expect(restartedSync.status.lastSyncedAt).toBeDefined();
     store.close();
   });
+
+  it("reports when the remote account needs Premium and keeps notes queued", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "language-coach-sync-test-"));
+    temporaryDirectories.push(directory);
+    const store = new SqliteLearningStore(join(directory, "notes.sqlite"));
+    store.saveNote({
+      turnId: "turn-premium",
+      inputLanguage: "target",
+      originalExpression: "Original",
+      polishedExpression: "Polished",
+      corrections: [],
+      patterns: [],
+      examples: [],
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json(
+      { error: "Remote sync requires Language Coach Premium.", code: "premium_required" },
+      { status: 402 },
+    ));
+
+    const sync = new RemoteLearningSync(store, {
+      LANGUAGE_COACH_SYNC_CONFIG_PATH: join(directory, "remote-sync.json"),
+    });
+    sync.configure({
+      remoteUrl: "https://language-coach.example",
+      token: "lc_abcdefghijklmnopqrstuvwxyz0123456789",
+      userId: "user-1",
+      deviceId: "123e4567-e89b-42d3-a456-426614174000",
+    });
+
+    await expect(sync.sync()).rejects.toBeInstanceOf(PremiumRequiredError);
+    expect(sync.status).toMatchObject({ state: "error", premiumRequired: true });
+    expect(store.getSyncSnapshot("https://language-coach.example", "user-1").notes).toHaveLength(1);
+
+    sync.disable();
+    expect(sync.status.premiumRequired).toBeUndefined();
+  });
+});
+
+it("accepts HTTPS or a local Worker as the sync server", () => {
+  const directory = mkdtempSync(join(tmpdir(), "language-coach-sync-url-test-"));
+  temporaryDirectories.push(directory);
+  const store = new SqliteLearningStore(join(directory, "notes.sqlite"));
+  const sync = new RemoteLearningSync(store, { LANGUAGE_COACH_SYNC_CONFIG_PATH: join(directory, "remote-sync.json") });
+  const config = (remoteUrl: string) => ({ remoteUrl, token: "x".repeat(40), userId: "user-1", deviceId: "device", deviceName: "test" });
+  try {
+    for (const remoteUrl of ["https://language-coach.example", "http://localhost:8787", "http://127.0.0.1:8787"]) {
+      expect(() => sync.configure(config(remoteUrl))).not.toThrow();
+    }
+    for (const remoteUrl of ["http://language-coach.example", "http://localhost.example", "not a url"]) {
+      expect(() => sync.configure(config(remoteUrl))).toThrow("invalid");
+    }
+  } finally { store.close(); }
 });
 
 it("isolated development ignores saved credentials and refuses remote sync", async () => {

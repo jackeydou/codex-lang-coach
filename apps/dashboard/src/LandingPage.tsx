@@ -4,9 +4,11 @@ import {
 } from "lucide-react"
 import { useEffect, useRef, useState, type RefObject } from "react"
 import { Link } from "react-router-dom"
+import { PREMIUM_PLANS } from "@language-coach/core/types"
 
 import { initializeAuth, readAuthSession } from "@/auth-client"
 import { AgentInstallPanel } from "@/components/agent-install-panel"
+import { planSummary } from "@/components/premium-card"
 
 const covers = [
   { title: "Gentle\nCorrections", detail: "Clear feedback that keeps your meaning intact.", className: "cover-orange" },
@@ -22,6 +24,7 @@ const questions = [
   ["What does it save?", "Only language-learning material: your original expression, the polished version, concise corrections, reusable patterns, and transfer examples."],
   ["Does it save my task details or files?", "No. Unrelated task context, source files, private data, and the answer to your task stay outside your learning history."],
   ["Where is my learning history stored?", "Your dashboard is local-first. You can keep everything on this device or choose private account sync when you want access across devices."],
+  ["What does Premium include?", "Premium adds remote sync on the hosted service: each computer uploads its learning notes to your private account, and you can review them all in the web dashboard. Coaching and the local dashboard stay free, you can cancel anytime, and the open-source code lets you self-host sync at no cost.", "premium"],
   ["Which languages can I use?", "Choose your native and target languages in settings. The coach uses that pair to explain corrections at the right level."],
   ["Can I remove a saved lesson?", "Yes. You control your learning history and can delete any lesson you no longer want to keep."],
   ["Will coaching slow down my tasks?", "The coaching step is intentionally brief. It appears first, then Codex continues with your task in the same conversation."],
@@ -352,13 +355,15 @@ export function LandingPage() {
   const coverFanRef = useRef<HTMLDivElement>(null)
   const [focusedCover, setFocusedCover] = useState<number | null>(null)
   const [authStatus, setAuthStatus] = useState<"checking" | "signed-out" | "signed-in">("checking")
+  const [premiumSyncRequired, setPremiumSyncRequired] = useState(false)
   useCoverAnimations(coverFanRef)
 
   useEffect(() => {
     let active = true
     void (async () => {
       try {
-        const { auth } = await initializeAuth()
+        const { runtime, auth } = await initializeAuth()
+        if (active) setPremiumSyncRequired(Boolean(runtime.premiumSyncRequired))
         const session = auth ? await readAuthSession(auth) : undefined
         if (active) setAuthStatus(session ? "signed-in" : "signed-out")
       } catch {
@@ -487,10 +492,39 @@ export function LandingPage() {
         </div>
       </section>
 
+      {premiumSyncRequired && <section className="landing-pricing landing-column" id="pricing">
+        <h2>Pricing</h2>
+        <p>Coaching and your local dashboard are free. Premium adds private sync across computers and the web.</p>
+        <div className="landing-pricing-grid">
+          <article>
+            <h3>Free</h3>
+            <p className="landing-price">$0</p>
+            <p>Language coaching, saved lessons, and insights on this computer. No account needed.</p>
+          </article>
+          <article className="landing-pricing-premium">
+            <h3>Premium</h3>
+            <ul>
+              {PREMIUM_PLANS.map((plan) => {
+                const summary = planSummary(plan)
+                return (
+                  <li key={plan.id}>
+                    <span>{plan.label}{summary.savings && <em>{summary.savings}</em>}</span>
+                    <strong>{summary.price} <small>{summary.period}</small></strong>
+                  </li>
+                )
+              })}
+            </ul>
+            <p>Upload notes from every computer to your private account and review them on the web.</p>
+          </article>
+        </div>
+        <p className="landing-pricing-note">Language Coach is open source. You can self-host the sync service for free.</p>
+      </section>}
+
       <section className="landing-faq landing-column" id="questions">
         <h2>Questions</h2>
         <dl>
-          {questions.map(([question, answer]) => <div key={question}><dt>{question}</dt><dd>{answer}</dd></div>)}
+          {questions.filter(([, , audience]) => audience !== "premium" || premiumSyncRequired)
+            .map(([question, answer]) => <div key={question}><dt>{question}</dt><dd>{answer}</dd></div>)}
         </dl>
       </section>
 
