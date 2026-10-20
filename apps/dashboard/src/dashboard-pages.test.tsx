@@ -20,7 +20,7 @@ const data: DashboardData = {
     weeklyActivity: [{ date: "2026-10-04", count: 12 }],
     activity90Days: [{ date: "2026-10-04", count: 12 }],
     categoryCounts: [{ category: "word-choice", count: 3 }],
-    recurringPatterns: Array.from({ length: 5 }, (_, index) => ({ pattern: `wire up ${index}`, explanation: "Connect a dependency.", count: 3 })),
+    recurringPatterns: Array.from({ length: 9 }, (_, index) => ({ pattern: `wire up ${index}`, explanation: "Connect a dependency.", count: 3 })),
     languageUse: { native: 2, target: 8, mixed: 1, other: 0, targetShare: 72 },
   },
 }
@@ -40,7 +40,7 @@ describe("Dashboard page boundaries", () => {
     expect(html).toContain('aria-label="Open pattern: wire up 0"')
     expect(html).toContain("Connect a dependency.")
     expect(html).toContain("1 / 2")
-    expect(html).not.toContain("wire up 4")
+    expect(html).not.toContain("wire up 8")
     for (const content of ["Natural version", "Practice activity", "Weekly activity", "Save settings"]) expect(html).not.toContain(content)
   })
 

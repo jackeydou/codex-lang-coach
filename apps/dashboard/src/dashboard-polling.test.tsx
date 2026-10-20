@@ -97,7 +97,7 @@ it("preserves the active reviewed card and original pagination through embedded 
   expect(container.textContent).not.toContain("Added elsewhere")
 
   // Only the user's explicit refresh creates a new deck.
-  await click(".review-toolbar button")
+  await click('.review-toolbar button[aria-label="Refresh order"]')
   expect(getDashboard.mock.calls.filter(([cursor]) => !cursor)).toEqual([[undefined, "review"], [undefined, "review"]])
   expect(container.querySelector(".dashboard-page-count")?.textContent).toContain("61")
 })
