@@ -56,8 +56,12 @@ run = [
 ]
 
 [tasks."worker:dev"]
-description = "Build the dashboard and run the Cloudflare Worker locally"
+description = "Build the dashboard and run the Cloudflare Worker locally (with Stripe webhook forwarding for a test key)"
 run = "pnpm --filter @language-coach/worker dev"
+
+[tasks."stripe:listen"]
+description = "Forward Stripe test-mode webhooks to the local Worker"
+run = "pnpm --filter @language-coach/worker run stripe:listen"
 
 [tasks."stripe:setup"]
 description = "Create the Premium product, prices, and webhook in Stripe"

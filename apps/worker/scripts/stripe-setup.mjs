@@ -173,10 +173,10 @@ Options:
   for (const plan of PLANS) await ensurePrice(stripe, plan);
   if (skipWebhook) {
     console.log(`
-Skipped the webhook endpoint. For local testing, forward events with the Stripe CLI:
-  stripe listen --events ${WEBHOOK_EVENTS.join(",")} \\
-    --forward-to localhost:8787/api/stripe/webhook
-and put the whsec_... it prints into apps/worker/.dev.vars as STRIPE_WEBHOOK_SECRET.`);
+Skipped the webhook endpoint. For local testing, \`mise run worker:dev\` forwards events to the
+Worker with the Stripe CLI. Put the signing secret from
+  stripe listen --api-key "$STRIPE_SECRET_KEY" --print-secret
+into apps/worker/.dev.vars as STRIPE_WEBHOOK_SECRET.`);
     return;
   }
   const webhookSecret = await ensureWebhook(stripe, webhookUrl);

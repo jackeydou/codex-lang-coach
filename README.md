@@ -398,26 +398,27 @@ To test billing end to end without deploying, run the Worker locally against a N
 
 1. Create a Neon branch from `main`, and apply the migrations to it with the branch's owner connection string: `NEON_PRODUCTION_DATABASE_URL='postgresql://neondb_owner:...@<branch-host>/neondb?sslmode=require' pnpm --filter @language-coach/worker run migrate:production`.
 2. Create the product and prices without a webhook endpoint: `pnpm --filter @language-coach/worker run stripe:setup -- --skip-webhook`.
-3. Forward the subscription events to the local Worker and keep it running. It prints a `whsec_...` secret. Stripe CLI 1.54 and later requires `--events`:
-
-   ```bash
-   stripe listen --events checkout.session.completed,checkout.session.async_payment_succeeded,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted,customer.subscription.paused,customer.subscription.resumed \
-     --forward-to localhost:8787/api/stripe/webhook
-   ```
-4. Create the gitignored `apps/worker/.dev.vars`:
+3. Create the gitignored `apps/worker/.dev.vars`:
 
    ```bash
    STRIPE_SECRET_KEY=sk_test_...
-   STRIPE_WEBHOOK_SECRET=whsec_...   # from stripe listen
+   STRIPE_WEBHOOK_SECRET=whsec_...   # from: stripe listen --api-key "$STRIPE_SECRET_KEY" --print-secret
    PREMIUM_SYNC_REQUIRED=true
    ```
 
-5. Start the Worker on the branch's `language_coach_app` connection:
+4. Point local Hyperdrive at the branch's `language_coach_app` connection. You can put this in the `[env]` section of `mise.local.toml` instead of exporting it:
 
    ```bash
    export CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE='postgresql://language_coach_app:...@<branch-host>/neondb?sslmode=require'
-   pnpm --filter @language-coach/worker dev
    ```
+
+5. Start the Worker:
+
+   ```bash
+   mise run worker:dev
+   ```
+
+   With a Stripe test or sandbox key in `STRIPE_SECRET_KEY` and the [Stripe CLI](https://docs.stripe.com/stripe-cli) installed, this also runs `stripe listen` and forwards the subscription events to the Worker. It warns when `.dev.vars` has a different signing secret. Live keys are never forwarded. Run `mise run stripe:listen` to forward events on its own.
 
 6. In another terminal, start the local dashboard against that Worker with a throwaway database and sync credential, then open `http://127.0.0.1:43128/dashboard/settings`:
 
@@ -430,7 +431,7 @@ To test billing end to end without deploying, run the Worker locally against a N
 
    Pay with Stripe's test card `4242 4242 4242 4242`. The local plugin accepts plain `http` only for `localhost` and `127.0.0.1` sync servers.
 
-`PREMIUM_SYNC_REQUIRED` is a Worker secret rather than a `wrangler.jsonc` variable. Deployments stay free by default, and deploys never overwrite the setting. You can wait to add it until Checkout works end to end. Delete it (`wrangler secret delete PREMIUM_SYNC_REQUIRED`) to make sync free again. Repeat steps 3–6 with a live key to go live.
+`PREMIUM_SYNC_REQUIRED` is a Worker secret rather than a `wrangler.jsonc` variable. Deployments stay free by default, and deploys never overwrite the setting. You can wait to add it until Checkout works end to end. Delete it (`wrangler secret delete PREMIUM_SYNC_REQUIRED`) to make sync free again. To go live, repeat steps 3–6 of turning billing on with a live key.
 
 The deployed site works at `https://language-coach.pluginsfoundry.dev`. The built local dashboard remains available at `http://localhost:43127`. Set `LANGUAGE_COACH_REMOTE_URL` only when the local build should discover a different deployed Worker.
 
