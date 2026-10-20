@@ -16,7 +16,12 @@ export interface StripePrice {
   id: string;
   lookup_key: string | null;
   recurring: { interval: string; interval_count: number } | null;
+  active?: boolean;
+  currency?: string;
+  unit_amount?: number | null;
 }
+
+export const PREMIUM_CURRENCY = "usd";
 
 export interface StripeSubscription {
   id: string;
@@ -130,6 +135,18 @@ export function planForPrice(price: StripePrice | undefined): PremiumPlan | unde
   if (byLookupKey) return byLookupKey.id;
   return PREMIUM_PLANS.find((plan) => plan.interval === price.recurring?.interval
     && plan.intervalCount === price.recurring?.interval_count)?.id;
+}
+
+/**
+ * Whether a Stripe price charges exactly what the dashboard and Terms show for a plan. A lookup key can be
+ * transferred to another price in Stripe, so checkout verifies the price instead of trusting the key.
+ */
+export function priceMatchesPlan(price: StripePrice, plan: (typeof PREMIUM_PLANS)[number]): boolean {
+  return price.active !== false
+    && price.currency === PREMIUM_CURRENCY
+    && price.unit_amount === plan.unitAmount
+    && price.recurring?.interval === plan.interval
+    && price.recurring?.interval_count === plan.intervalCount;
 }
 
 function subscriptionPeriodBoundary(

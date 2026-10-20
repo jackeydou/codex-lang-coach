@@ -16,6 +16,7 @@ import {
   StripeClient,
   billingEventTarget,
   billingReturnUrl,
+  priceMatchesPlan,
   verifyStripeSignature,
   type StripeEvent,
   type StripePrice,
@@ -493,6 +494,10 @@ async function createCheckoutSession(request: Request, env: Env, url: URL, user:
   });
   const price = prices.data[0];
   if (!price) return json(request, { error: `The ${plan.label.toLowerCase()} plan is not available yet.` }, 503);
+  if (!priceMatchesPlan(price, plan)) {
+    console.error(`Stripe price ${price.id} for ${plan.lookupKey} does not match the ${plan.id} plan. Run stripe:setup to fix it.`);
+    return json(request, { error: `The ${plan.label.toLowerCase()} plan is not available right now.` }, 503);
+  }
 
   const successUrl = new URL(returnUrl);
   successUrl.searchParams.set("billing", "success");

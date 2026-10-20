@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { PREMIUM_PLANS } from "@language-coach/core/types";
 import worker from "./index";
 import {
   StripeClient,
@@ -11,6 +12,7 @@ import {
   subscriptionGrantsPremium,
   subscriptionPeriodEnd,
   subscriptionPeriodStart,
+  priceMatchesPlan,
   verifyStripeSignature,
   type StripeSubscription,
 } from "./stripe";
@@ -105,6 +107,17 @@ describe("Stripe subscription mapping", () => {
     expect(planForPrice({ id: "p", lookup_key: null, recurring: { interval: "month", interval_count: 1 } })).toBe("monthly");
     expect(planForPrice({ id: "p", lookup_key: null, recurring: { interval: "month", interval_count: 3 } })).toBe("quarterly");
     expect(planForPrice({ id: "p", lookup_key: null, recurring: { interval: "week", interval_count: 1 } })).toBeUndefined();
+  });
+
+  it("only accepts a price that charges exactly what the plan shows", () => {
+    const yearly = PREMIUM_PLANS.find((plan) => plan.id === "yearly")!;
+    const price = { id: "p", lookup_key: yearly.lookupKey, active: true, currency: "usd", unit_amount: 2999, recurring: { interval: "year", interval_count: 1 } };
+    expect(priceMatchesPlan(price, yearly)).toBe(true);
+    expect(priceMatchesPlan({ ...price, unit_amount: 3999 }, yearly)).toBe(false);
+    expect(priceMatchesPlan({ ...price, currency: "eur" }, yearly)).toBe(false);
+    expect(priceMatchesPlan({ ...price, recurring: { interval: "month", interval_count: 1 } }, yearly)).toBe(false);
+    expect(priceMatchesPlan({ ...price, recurring: null }, yearly)).toBe(false);
+    expect(priceMatchesPlan({ ...price, active: false }, yearly)).toBe(false);
   });
 
   it("reads the billing period from subscription items", () => {
