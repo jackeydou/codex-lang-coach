@@ -18,7 +18,8 @@ describe("RemoteLearningSync", () => {
     const directory = mkdtempSync(join(tmpdir(), "language-coach-sync-test-"));
     temporaryDirectories.push(directory);
     const store = new SqliteLearningStore(join(directory, "notes.sqlite"));
-    for (let index = 0; index < 205; index += 1) {
+    // Two full batches and a remainder prove the batch bound without slow, per-note disk writes on CI.
+    for (let index = 0; index < 45; index += 1) {
       store.saveNote({
         turnId: `turn-${index}`,
         inputLanguage: "target",
@@ -56,15 +57,15 @@ describe("RemoteLearningSync", () => {
       deviceName: "Test laptop",
     });
 
-    await expect(sync.sync()).resolves.toMatchObject({ acceptedNotes: 205, deviceId });
-    expect(batches.map((batch) => batch.notes.length)).toEqual([20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 5]);
+    await expect(sync.sync()).resolves.toMatchObject({ acceptedNotes: 45, deviceId });
+    expect(batches.map((batch) => batch.notes.length)).toEqual([20, 20, 5]);
     expect(batches.every((batch) => batch.deviceId === deviceId)).toBe(true);
     expect(batches[0]?.profile).toEqual(store.getProfile());
     expect(batches.slice(1).every((batch) => batch.profile === undefined)).toBe(true);
     expect(requests[0]?.headers).toEqual(expect.objectContaining({
       "user-agent": "Language-Coach/0.1 (+https://language-coach.pluginsfoundry.dev)",
     }));
-    expect(sync.status).toMatchObject({ state: "idle", completedItems: 205, totalItems: 205 });
+    expect(sync.status).toMatchObject({ state: "idle", completedItems: 45, totalItems: 45 });
     store.close();
   });
 
