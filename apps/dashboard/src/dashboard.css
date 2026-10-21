@@ -136,57 +136,126 @@
 .dashboard-empty h2 { margin: 0; font-family: var(--font-serif); font-size: 1.5rem; font-weight: 400; }
 .dashboard-empty p { max-width: 26rem; margin: 0; color: var(--muted-foreground); font-size: 0.875rem; }
 
-/* Flash cards */
-/* The card keeps one height and scrolls inside, so the review button and navigation never move. */
-.flashcards-page { display: flex; height: 100%; min-height: 34rem; flex-direction: column; padding-bottom: clamp(1.25rem, 3vw, 2rem); }
+/* Flash cards: a physical deck. Cards flip in 3D, swipe to grade, and fly off with a stamp. */
+.flashcards-page { display: flex; height: 100%; min-height: 36rem; flex-direction: column; padding-bottom: clamp(1.25rem, 3vw, 2rem); }
 .flashcards-page .dashboard-page-header { flex: none; }
+.dashboard-page-container:has(.flashcards-page) { overflow-x: hidden; }
 .flashcard-section { display: flex; width: min(100%, 50rem); min-height: 0; flex: 1; flex-direction: column; margin: 0 auto; }
 .flashcard-deck, .flashcard-viewer { display: flex; width: 100%; min-width: 0; min-height: 0; flex: 1; flex-direction: column; }
-.flashcard-viewer { gap: 1rem; max-height: 46rem; }
-.flashcard-deck-stage { display: grid; min-height: 20rem; flex: 1; overflow: hidden; isolation: isolate; touch-action: pan-y; border: 1px solid var(--border); border-radius: 16px; background: var(--card); box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 5%, transparent), 0 24px 48px -32px color-mix(in oklch, var(--foreground) 30%, transparent); }
-.deck-active-card { position: relative; z-index: 2; display: flex; min-height: 0; flex-direction: column; }
-.deck-outgoing-card { position: absolute; inset: 0; z-index: 3; display: flex; flex-direction: column; pointer-events: none; background: var(--card); }
-.deck-active-card[data-direction="up"] { animation: deck-card-from-bottom 280ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-.deck-active-card[data-direction="down"] { animation: deck-card-from-top 280ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-.deck-outgoing-card[data-direction="up"] { animation: deck-card-to-top 280ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-.deck-outgoing-card[data-direction="down"] { animation: deck-card-to-bottom 280ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.flashcard-viewer { gap: 0.875rem; max-height: 48rem; }
+.flashcard-review-action, .flashcard-controls, .deck-hud { flex: none; }
 
-.flashcard { position: relative; display: flex; min-height: 0; flex: 1; flex-direction: column; user-select: text; }
-.flashcard-meta, .flashcard-review-action, .flashcard-controls { flex: none; }
-.flashcard-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.875rem; min-height: 3.25rem; padding: 0.625rem 0.75rem 0.625rem clamp(1.25rem, 4vw, 2.5rem); border-bottom: 1.5px solid color-mix(in oklch, var(--brand) 45%, transparent); color: var(--muted-foreground); font-size: 0.75rem; }
+/* Round HUD */
+.deck-hud { position: relative; display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+.deck-hud-progress { display: grid; flex: 1; gap: 0.4rem; color: var(--muted-foreground); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.deck-hud-progress b { color: var(--foreground); font-weight: 600; }
+.deck-hud-bar { height: 6px; overflow: hidden; border-radius: 99px; background: var(--border); }
+.deck-hud-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand), color-mix(in oklch, var(--brand) 60%, var(--highlight))); transition: width 600ms var(--ease-spring, cubic-bezier(0.22, 1, 0.36, 1)); }
+.deck-hud-streak { display: inline-flex; align-items: center; gap: 0.25rem; border-radius: 999px; background: var(--muted); padding: 0.3rem 0.7rem 0.3rem 0.55rem; color: var(--muted-foreground); font-size: 0.8125rem; font-variant-numeric: tabular-nums; transition: background 240ms ease, color 240ms ease; }
+.deck-hud-streak svg { width: 0.95rem; height: 0.95rem; }
+.deck-hud-streak b { display: inline-block; min-width: 1ch; font-weight: 650; animation: streak-pop 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+.deck-hud-streak[data-active="true"] { background: var(--brand-wash); color: var(--brand-ink); }
+.deck-hud-streak[data-active="true"] svg { animation: flame 1.4s ease-in-out infinite; }
+.deck-hud-toast { position: absolute; right: 0; top: calc(100% + 0.25rem); z-index: 20; border-radius: 999px; background: var(--foreground); color: var(--background); padding: 0.3rem 0.8rem; font-size: 0.75rem; font-weight: 600; white-space: nowrap; animation: toast-in 2.2s cubic-bezier(0.22, 1, 0.36, 1) both; pointer-events: none; }
+@keyframes streak-pop { 0% { transform: scale(1.8); color: var(--brand); } 100% { transform: none; } }
+@keyframes flame { 0%, 100% { transform: rotate(-6deg) scale(1); } 50% { transform: rotate(6deg) scale(1.12); } }
+@keyframes toast-in { 0% { opacity: 0; transform: translateY(-6px) scale(0.9); } 12%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-4px); } }
+
+/* Stage and stack */
+.flashcard-deck-stage { position: relative; display: grid; min-height: 20rem; flex: 1; margin-bottom: 12px; isolation: isolate; touch-action: pan-y; perspective: 1600px; }
+.flashcard-deck-stage[data-dragging="true"] { cursor: grabbing; user-select: none; }
+.deck-ghost { position: absolute; inset: 0; border: 1px solid var(--border); border-radius: 18px; background: var(--card); pointer-events: none; transition: transform 400ms cubic-bezier(0.22, 1, 0.36, 1); }
+.deck-ghost[data-depth="1"] { z-index: 1; transform: translateY(7px) scale(0.975) rotate(0.6deg); box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 6%, transparent); }
+.deck-ghost[data-depth="2"] { z-index: 0; transform: translateY(13px) scale(0.95) rotate(-0.8deg); opacity: 0.7; }
+.deck-active-card, .deck-leaving-card { position: relative; z-index: 3; display: flex; min-height: 0; grid-area: 1 / 1; flex-direction: column; }
+.deck-active-card { transform: translateX(var(--drag-x, 0)) rotate(var(--drag-r, 0)); transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1); will-change: transform; }
+.flashcard-deck-stage[data-dragging="true"] .deck-active-card { transition: none; }
+.deck-active-card[data-enter="next"] > .deck-tilt { animation: deck-rise 460ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.deck-active-card[data-enter="prev"] > .deck-tilt { animation: deck-return 460ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.deck-active-card[data-shake="a"] > .deck-tilt { animation: deck-shake-a 420ms ease both; }
+.deck-active-card[data-shake="b"] > .deck-tilt { animation: deck-shake-b 420ms ease both; }
+.deck-leaving-card { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.deck-leaving-card[data-kind="got"] { animation: fly-right 620ms 140ms cubic-bezier(0.5, 0, 0.75, 0) both; }
+.deck-leaving-card[data-kind="again"] { animation: fly-left 620ms 140ms cubic-bezier(0.5, 0, 0.75, 0) both; }
+.deck-leaving-card[data-kind="next"] { animation: slide-away 380ms cubic-bezier(0.4, 0, 1, 1) both; }
+.deck-leaving-card[data-kind="prev"] { z-index: 2; animation: sink-back 380ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes deck-rise { from { transform: translateY(14px) scale(0.95); filter: brightness(0.97); } to { transform: none; filter: none; } }
+@keyframes deck-return { from { transform: translateX(-70%) rotate(-8deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fly-right { from { transform: translateX(var(--from-x, 0)) rotate(var(--from-r, 0)); } to { transform: translateX(135%) translateY(-6%) rotate(16deg); opacity: 0; } }
+@keyframes fly-left { from { transform: translateX(var(--from-x, 0)) rotate(var(--from-r, 0)); } to { transform: translateX(-135%) translateY(-6%) rotate(-16deg); opacity: 0; } }
+@keyframes slide-away { from { transform: translateX(var(--from-x, 0)) rotate(var(--from-r, 0)); } to { transform: translateX(-55%) rotate(-5deg); opacity: 0; } }
+@keyframes sink-back { from { transform: translateX(var(--from-x, 0)); } to { transform: translateY(14px) scale(0.94); opacity: 0; } }
+@keyframes deck-shake-a { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+@keyframes deck-shake-b { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }
+
+.deck-cue { position: absolute; top: 5rem; z-index: 6; border: 3px solid currentColor; border-radius: 10px; padding: 0.25rem 0.75rem; font-size: 1.25rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none; transition: opacity 80ms linear; }
+.deck-cue--right { left: 1.5rem; color: var(--positive); transform: rotate(-12deg); }
+.deck-cue--left { right: 1.5rem; color: var(--brand); transform: rotate(12deg); }
+.deck-cue[data-grade="false"] { color: var(--muted-foreground); }
+
+/* The card */
+.deck-tilt { display: flex; min-height: 0; flex: 1; flex-direction: column; transform: rotateX(var(--tilt-x, 0)) rotateY(var(--tilt-y, 0)); transition: transform 300ms ease-out; transform-style: preserve-3d; }
+.fc { position: relative; flex: 1; min-height: 0; transform-style: preserve-3d; }
+.fc-inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 720ms cubic-bezier(0.22, 1, 0.36, 1); }
+.fc[data-flipped="true"] .fc-inner { transform: rotateY(180deg); }
+.fc-face {
+  position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 18px; background: var(--card);
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 6%, transparent), 0 28px 56px -36px color-mix(in oklch, var(--foreground) 38%, transparent);
+  backface-visibility: hidden; -webkit-backface-visibility: hidden; user-select: text;
+}
+.fc-back { transform: rotateY(180deg); }
+/* A soft glare follows the mouse across the card. */
+.fc-face::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(circle at var(--glare-x, 50%) var(--glare-y, 0%), color-mix(in oklch, white 32%, transparent), transparent 55%); opacity: 0; pointer-events: none; transition: opacity 300ms ease; }
+.deck-active-card:hover .fc-face::after { opacity: 0.5; }
+.dark .fc-face::after { background: radial-gradient(circle at var(--glare-x, 50%) var(--glare-y, 0%), color-mix(in oklch, white 8%, transparent), transparent 55%); }
+
+.flashcard-meta { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.875rem; min-height: 3.25rem; padding: 0.625rem 0.75rem 0.625rem clamp(1.25rem, 4vw, 2.5rem); border-bottom: 1.5px solid color-mix(in oklch, var(--brand) 45%, transparent); color: var(--muted-foreground); font-size: 0.75rem; }
 .flashcard-source { color: var(--foreground); font-weight: 550; }
 .flashcard-status { border-radius: 999px; background: var(--muted); padding: 0.125rem 0.55rem; font-weight: 550; }
 .flashcard-status[data-due="true"] { background: var(--brand-wash); color: var(--brand-ink); }
-.flashcard-delete-action { margin-left: auto; }
+.flashcard-delete-action { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; }
 .flashcard-delete-action [data-slot="button"] { color: var(--muted-foreground); background: transparent; }
 .flashcard-delete-action [data-slot="button"]:hover { color: var(--destructive); }
-.flashcard-error { margin: 0; padding: 0.75rem clamp(1.25rem, 4vw, 2.5rem); color: var(--destructive); font-size: 0.8125rem; }
+.flashcard-error { color: var(--destructive); font-size: 0.75rem; }
 
 .flashcard-scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior-y: contain; padding: clamp(1.5rem, 4vw, 2.5rem); scrollbar-width: thin; scrollbar-color: var(--input) transparent; }
 .flashcard-label { margin: 0 0 0.625rem; color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; }
-.flashcard-label--natural { color: var(--brand-ink); }
-.flashcard-prompt blockquote { margin: 0; color: var(--foreground); font-family: var(--font-serif); font-size: clamp(1.25rem, 2.2vw, 1.625rem); line-height: 1.4; letter-spacing: -0.01em; white-space: pre-wrap; overflow-wrap: anywhere; }
-.flashcard-answer { position: relative; margin-top: 1.75rem; }
-.flashcard-answer-body { transition: filter 360ms ease, opacity 360ms ease; }
-.flashcard-answer[data-hidden="true"] .flashcard-answer-body { max-height: 8rem; overflow: hidden; filter: blur(9px); opacity: 0.45; user-select: none; pointer-events: none; -webkit-mask-image: linear-gradient(black 30%, transparent); mask-image: linear-gradient(black 30%, transparent); }
-.flashcard[data-revealed="true"] .flashcard-answer-body { animation: answer-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both; }
-@keyframes answer-in { from { opacity: 0.2; filter: blur(6px); } to { opacity: 1; filter: none; } }
-.flashcard-natural { margin: 0; color: var(--foreground); font-family: var(--font-serif); font-size: clamp(1.375rem, 2.5vw, 1.875rem); line-height: 1.35; letter-spacing: -0.015em; white-space: pre-wrap; overflow-wrap: anywhere; }
-.flashcard-reveal {
-  position: absolute; inset: 0.5rem 0 auto; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.875rem;
-  width: 100%; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in oklch, var(--card) 88%, transparent);
-  padding: 1rem 1.125rem; color: var(--foreground); text-align: left; cursor: pointer; backdrop-filter: blur(2px);
-  transition: border-color 160ms ease, transform 200ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 200ms ease;
-}
-.flashcard-reveal:hover { border-color: var(--brand); transform: translateY(-1px); box-shadow: 0 10px 24px -16px color-mix(in oklch, var(--brand) 60%, transparent); }
-.flashcard-reveal:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-.flashcard-reveal > svg { width: 1.25rem; height: 1.25rem; color: var(--brand); }
-.flashcard-reveal > span { display: flex; flex-direction: column; gap: 0.125rem; }
-.flashcard-reveal strong { font-size: 0.9375rem; font-weight: 600; }
-.flashcard-reveal > span > span { color: var(--muted-foreground); font-size: 0.8125rem; }
+.flashcard-label--natural { margin-top: 1.5rem; color: var(--brand-ink); }
 
+.fc-front-body { display: flex; flex-direction: column; cursor: pointer; }
+.fc-front-body > .flashcard-label { margin-top: auto; }
+/* Index-card rules sit under each line of the quote, so they always line up with the text. */
+.fc-quote { --rule: clamp(2.375rem, 4.6vw, 3.125rem); margin: 0; color: var(--foreground); font-family: var(--font-serif); font-size: clamp(1.625rem, 3.3vw, 2.375rem); line-height: var(--rule);
+  background: repeating-linear-gradient(transparent 0 calc(var(--rule) - 1px), color-mix(in oklch, var(--brand) 22%, var(--border)) calc(var(--rule) - 1px) var(--rule)); letter-spacing: -0.02em; text-wrap: balance; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fc-teaser { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.5rem; }
+.fc-teaser span { border-radius: 999px; background: var(--muted); padding: 0.2rem 0.65rem; color: var(--muted-foreground); font-size: 0.75rem; }
+.fc-teaser b { color: var(--brand-ink); font-weight: 650; }
+.fc-hint { display: flex; align-items: center; gap: 0.5rem; margin: 1.25rem 0 auto; color: var(--muted-foreground); font-size: 0.8125rem; }
+.fc-hint svg { width: 0.9rem; height: 0.9rem; color: var(--brand); transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1); }
+.fc-front-body:hover .fc-hint svg { transform: rotate(180deg); }
+
+.fc-original { margin: 0; color: var(--muted-foreground); font-family: var(--font-serif); font-size: 1.125rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.flashcard-natural { margin: 0; color: var(--foreground); font-family: var(--font-serif); font-size: clamp(1.5rem, 2.8vw, 2rem); line-height: 1.3; letter-spacing: -0.015em; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Marks draw themselves in once the card turns over, like a proofreader working through the sentence. */
 .mark-removed { color: inherit; text-decoration: line-through 2px var(--brand); text-decoration-skip-ink: none; }
 .mark-added { color: inherit; text-decoration: none; background: linear-gradient(transparent 60%, var(--highlight) 60%); }
+.fc .mark-removed { text-decoration: none; background: linear-gradient(var(--brand), var(--brand)) no-repeat 0 58% / 100% 2px; }
+.fc .mark-added { background: linear-gradient(transparent 60%, var(--highlight) 60%) no-repeat 0 0 / 100% 100%; }
+.fc[data-flipped="true"] .fc-back .mark-removed { animation: mark-draw 360ms calc(360ms + var(--i, 0) * 110ms) cubic-bezier(0.22, 1, 0.36, 1) both; }
+.fc[data-flipped="true"] .fc-back .mark-added { animation: mark-draw 520ms calc(560ms + var(--i, 0) * 130ms) cubic-bezier(0.22, 1, 0.36, 1) both; }
+.fc[data-flipped="true"] .fc-back .correction-item { animation: detail-in 420ms calc(700ms + var(--i, 0) * 90ms) cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes mark-draw { from { background-size: 0% 100%; } }
+.dark .fc .mark-added { color: oklch(0.93 0.1 95); background-image: linear-gradient(transparent 80%, oklch(0.82 0.14 92 / 0.75) 80%); }
+.fc[data-flipped="true"] .fc-back .mark-removed { animation-name: strike-draw; }
+@keyframes strike-draw { from { background-size: 0% 2px; } }
+@keyframes detail-in { from { opacity: 0; transform: translateY(6px); } }
+
+.fc-stamp { position: absolute; top: 4.25rem; right: 1.5rem; z-index: 4; border: 3px solid currentColor; border-radius: 10px; padding: 0.2rem 0.75rem; font-size: 1.375rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; transform: rotate(10deg); animation: stamp-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both; pointer-events: none; }
+.fc-stamp[data-kind="got"] { color: var(--positive); }
+.fc-stamp[data-kind="again"] { left: 1.5rem; right: auto; color: var(--brand); transform: rotate(-10deg); }
+@keyframes stamp-in { from { opacity: 0; scale: 1.9; } to { opacity: 1; scale: 1; } }
 
 .lesson-detail-section { display: grid; gap: 0.875rem; margin-top: 1.75rem; border-top: 1px solid var(--border); padding-top: 1.25rem; }
 .lesson-detail-section h3 { margin: 0; color: var(--muted-foreground); font-size: 0.6875rem; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase; }
@@ -201,20 +270,46 @@
 .lesson-tag:is([data-category="grammar"], [data-category="spelling"], [data-category="structure"]) { background: var(--brand-wash); color: var(--brand-ink); }
 .lesson-tag:is([data-category="word-choice"], [data-category="collocation"]) { background: color-mix(in oklch, var(--highlight) 70%, var(--card)); color: var(--foreground); }
 .pattern-item { border-radius: 10px; background: var(--muted); padding: 0.875rem 1rem; font-size: 0.9375rem; }
+.pattern-item + .pattern-item { margin-top: -0.25rem; }
 .pattern-item strong { font-weight: 600; overflow-wrap: anywhere; }
 .lesson-examples li { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr); gap: 0.875rem; font-size: 0.9375rem; line-height: 1.6; }
 .lesson-examples li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
 .example-context { color: var(--muted-foreground); font-size: 0.8125rem; }
 
-.flashcard-review-action { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; border-top: 1px solid var(--border); padding: 0.875rem clamp(1.25rem, 4vw, 2.5rem); background: var(--muted); }
-.flashcard-review-copy { display: flex; min-width: 0; flex-direction: column; gap: 0.125rem; color: var(--muted-foreground); font-size: 0.75rem; }
-.flashcard-review-copy .review-device-note { font-size: 0.6875rem; opacity: 0.8; }
+/* Grade bar */
+.flashcard-review-action { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; min-height: 5.375rem; border: 1px solid var(--border); border-radius: 14px; background: var(--card); padding: 0.75rem 0.75rem 0.75rem 1.25rem; }
+.flashcard-review-copy { display: flex; min-width: 0; flex-direction: column; gap: 0.125rem; margin: 0; color: var(--muted-foreground); font-size: 0.75rem; animation: detail-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.flashcard-review-copy strong { color: var(--foreground); font-size: 0.875rem; font-weight: 600; }
+.flashcard-review-copy .review-device-note { font-size: 0.6875rem; opacity: 0.85; }
+.flashcard-review-action [data-slot="button"] { height: 2.5rem; gap: 0.5rem; padding-inline: 1.1rem; }
+.flashcard-review-action [data-slot="button"] kbd { margin-left: 0.125rem; border-color: color-mix(in oklch, currentColor 25%, transparent); background: transparent; color: inherit; opacity: 0.75; }
+.flashcard-grade { position: relative; display: flex; align-items: center; gap: 0.5rem; }
+.flashcard-grade [data-action="got-it"] { background: var(--positive); color: oklch(0.99 0.005 155); }
+.flashcard-grade [data-action="got-it"]:hover { background: color-mix(in oklch, var(--positive) 88%, black); }
+.dark .flashcard-grade [data-action="got-it"] { color: oklch(0.2 0.03 155); }
+.flashcard-grade [data-action="again"]:hover { border-color: var(--brand); color: var(--brand-ink); }
+.flashcard-grade-error { flex-basis: 100%; margin: 0; color: var(--destructive); font-size: 0.75rem; }
 
-.flashcard-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.5rem; }
-.flashcard-deck-status { display: grid; justify-items: center; gap: 0.5rem; color: var(--muted-foreground); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
-.flashcard-progress { width: min(100%, 16rem); height: 3px; overflow: hidden; border-radius: 99px; background: var(--border); }
-.flashcard-progress i { display: block; height: 100%; border-radius: inherit; background: var(--brand); transition: width 300ms cubic-bezier(0.22, 1, 0.36, 1); }
-.flashcard-keys { display: flex; gap: 0.25rem; }
+.flashcard-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1rem; }
+.flashcard-deck-status { display: grid; justify-items: center; gap: 0.375rem; color: var(--muted-foreground); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.flashcard-keys { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 0.25rem; font-size: 0.6875rem; }
+
+/* Bursts and the end of a round */
+.deck-burst { position: absolute; left: 50%; top: 45%; z-index: 8; width: 0; height: 0; pointer-events: none; }
+.deck-burst i { position: absolute; left: 0; top: 0; width: var(--s); height: var(--s); border-radius: 2px; animation: burst 760ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.deck-burst i:nth-child(3n) { border-radius: 50%; }
+@keyframes burst { 0% { transform: rotate(var(--a)) translateX(0) scale(0.4); opacity: 1; } 70% { opacity: 1; } 100% { transform: rotate(var(--a)) translateX(var(--d)) scale(1) rotate(120deg); opacity: 0; } }
+.deck-complete { position: absolute; inset: -0.5rem; z-index: 10; display: grid; place-items: center; overflow: hidden; border-radius: 20px; background: color-mix(in oklch, var(--background) 72%, transparent); backdrop-filter: blur(6px); animation: detail-in 360ms ease both; }
+.deck-complete-card { position: relative; z-index: 1; display: grid; justify-items: center; gap: 0.5rem; max-width: 26rem; border: 1px solid var(--border); border-radius: 20px; background: var(--card); padding: 2rem 2rem 1.75rem; text-align: center; box-shadow: 0 30px 60px -30px color-mix(in oklch, var(--foreground) 40%, transparent); animation: complete-in 640ms 120ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.deck-complete-card > svg { width: 1.75rem; height: 1.75rem; color: var(--brand); }
+.deck-complete-card .flashcard-label { margin: 0.25rem 0 0; color: var(--brand-ink); }
+.deck-complete-card h2 { margin: 0; font-family: var(--font-serif); font-size: 2rem; font-weight: 400; line-height: 1.1; letter-spacing: -0.02em; }
+.deck-complete-card p { margin: 0 0 0.75rem; color: var(--muted-foreground); font-size: 0.875rem; }
+.deck-complete-card b { color: var(--foreground); }
+@keyframes complete-in { from { opacity: 0; transform: translateY(18px) scale(0.94); } }
+.deck-confetti { position: absolute; inset: 0; pointer-events: none; }
+.deck-confetti i { position: absolute; top: -12px; height: 14px; border-radius: 2px; animation-name: confetti; animation-timing-function: cubic-bezier(0.3, 0.6, 0.6, 1); animation-fill-mode: both; }
+@keyframes confetti { from { transform: translate(0, 0) rotate(0); opacity: 1; } to { transform: translate(var(--drift), 46rem) rotate(var(--spin)); opacity: 0.2; } }
 
 /* Repeat patterns */
 .pattern-list-heading, .pattern-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr) 7.5rem 1rem; align-items: center; gap: 1.5rem; }
@@ -306,11 +401,16 @@
   .dashboard-page { padding: 3.75rem 1rem 1.5rem; }
   .dashboard-page-header { margin-bottom: 1.5rem; }
   .dashboard-sidebar-toggle { top: 0.75rem; left: 0.75rem; }
+  .correction-item, .lesson-examples li { grid-template-columns: 1fr; gap: 0.375rem; }
   .flashcard-controls { gap: 0.5rem; }
   .flashcard-controls [data-slot="button"] { padding-inline: 0.75rem; font-size: 0.75rem; }
   .flashcard-keys { display: none; }
-  .correction-item, .lesson-examples li { grid-template-columns: 1fr; gap: 0.375rem; }
-  .flashcard-review-action { align-items: stretch; flex-direction: column; }
+  .flashcard-review-action { padding: 0.75rem; }
+  .flashcard-review-copy { display: none; }
+  .flashcard-review-action > [data-slot="button"], .flashcard-grade { flex: 1; }
+  .flashcard-grade [data-slot="button"] { flex: 1; }
+  .flashcard-review-action kbd { display: none; }
+  .deck-cue { top: 1rem; font-size: 1rem; }
   .pattern-list-heading { display: none; }
   .pattern-row { grid-template-columns: minmax(0, 1fr) auto 1rem; gap: 0.5rem 0.75rem; }
   .pattern-meaning { grid-column: 1 / -1; grid-row: 2; font-size: 0.8125rem; }

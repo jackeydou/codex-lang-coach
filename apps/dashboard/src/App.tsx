@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent, type WheelEvent as ReactWheelEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import type { BillingStatus, DashboardData, DashboardRuntimeConfig, LanguageProfile, SyncStatus, DashboardNote, NotesOrder, MarkReviewedInput, PremiumPlan } from "@language-coach/core"
 import { ActivityIcon, ArrowLeftIcon, ArrowRightIcon, BookOpenCheckIcon, CheckIcon, ChevronRightIcon, CloudIcon, FlameIcon, LayersIcon, LaptopIcon, LightbulbIcon, LogInIcon, RefreshCwIcon, Repeat2Icon, Settings2Icon, SparklesIcon, TargetIcon } from "lucide-react"
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom"
@@ -8,7 +8,7 @@ import { initializeAuth, readAuthSession, type AuthClient, type AuthUser } from 
 import { ActivityChart, CategoryChart, LanguageUseChart } from "@/components/analytics-charts"
 import { LandingPage } from "@/LandingPage"
 import { LegalPage } from "@/LegalPage"
-import { NoteFlashcard } from "@/components/note-flashcard"
+import { FlashcardDeck } from "@/components/flashcard-deck"
 import { PremiumCard } from "@/components/premium-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -121,221 +121,6 @@ function RepeatPatterns({ patterns }: { patterns: DashboardData["progress"]["rec
         </nav>
       )}
     </section>
-  )
-}
-
-function FlashcardDeck({ notes, totalNotes, hasMore, loadingMore, onLoadMore, onDelete, onReview, quiz = false }: {
-  notes: DashboardNote[]
-  totalNotes: number
-  hasMore: boolean
-  loadingMore: boolean
-  onLoadMore: () => Promise<void>
-  onDelete: (id: string) => Promise<void>
-  onReview?: (id: string) => Promise<void>
-  quiz?: boolean
-}) {
-  const [activeNoteId, setActiveNoteId] = useState<string>()
-  const [revealedId, setRevealedId] = useState<string>()
-  const previousPage = useRef(0)
-  const selectedIndex = notes.findIndex((note) => note.id === activeNoteId)
-  const page = selectedIndex >= 0 ? selectedIndex : Math.min(previousPage.current, Math.max(0, notes.length - 1))
-  useEffect(() => {
-    previousPage.current = page
-    if (notes[page]?.id !== activeNoteId) setActiveNoteId(notes[page]?.id)
-  }, [notes, page, activeNoteId])
-  const [direction, setDirection] = useState<"up" | "down">("up")
-  const [outgoingNote, setOutgoingNote] = useState<DashboardNote>()
-  const pointerStart = useRef<number | undefined>(undefined)
-  const touchStart = useRef<{ y: number; atTop: boolean; atBottom: boolean } | undefined>(undefined)
-  const wheelDistance = useRef(0)
-  const wheelGestureActive = useRef(false)
-  const wheelStartedAtBoundary = useRef(false)
-  const wheelSwitchedCard = useRef(false)
-  const wheelGestureEndTimer = useRef<number | undefined>(undefined)
-
-  useEffect(() => {
-    if (page >= notes.length - 2 && hasMore && !loadingMore) void onLoadMore()
-  }, [hasMore, loadingMore, notes.length, onLoadMore, page])
-
-  useEffect(() => () => {
-    if (wheelGestureEndTimer.current !== undefined) window.clearTimeout(wheelGestureEndTimer.current)
-  }, [])
-
-  useEffect(() => {
-    function handleGlobalKeyboard(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null
-      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='dialog']")) return
-      if (event.key === " " && !target?.closest("button, a")) {
-        event.preventDefault()
-        setRevealedId((current) => current === notes[page]?.id ? undefined : notes[page]?.id)
-        return
-      }
-
-      const forward = ["ArrowRight", "ArrowDown", "PageDown", "j", "J"].includes(event.key)
-      const backward = ["ArrowLeft", "ArrowUp", "PageUp", "k", "K"].includes(event.key)
-      if (!forward && !backward) return
-
-      const nextPage = Math.max(0, Math.min(notes.length - 1, page + (forward ? 1 : -1)))
-      event.preventDefault()
-      if (nextPage === page || !notes[page]) return
-
-      setDirection(forward ? "up" : "down")
-      setOutgoingNote(notes[page])
-      setActiveNoteId(notes[nextPage]?.id)
-    }
-
-    window.addEventListener("keydown", handleGlobalKeyboard)
-    return () => window.removeEventListener("keydown", handleGlobalKeyboard)
-  }, [notes, outgoingNote, page])
-
-  if (!notes.length) return null
-
-  const activeNote = notes[page]
-  if (!activeNote) return null
-  function goTo(nextPage: number) {
-    const clampedPage = Math.max(0, Math.min(notes.length - 1, nextPage))
-    if (clampedPage === page) return
-    setDirection(clampedPage > page ? "up" : "down")
-    setOutgoingNote(activeNote)
-    setActiveNoteId(notes[clampedPage]?.id)
-  }
-
-  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
-    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
-
-    const isNewGesture = !wheelGestureActive.current
-
-    if (isNewGesture) {
-      wheelDistance.current = 0
-      wheelStartedAtBoundary.current = false
-      wheelSwitchedCard.current = false
-    }
-
-    wheelGestureActive.current = true
-    if (wheelGestureEndTimer.current !== undefined) window.clearTimeout(wheelGestureEndTimer.current)
-    wheelGestureEndTimer.current = window.setTimeout(() => {
-      wheelGestureActive.current = false
-      wheelStartedAtBoundary.current = false
-      wheelSwitchedCard.current = false
-      wheelDistance.current = 0
-    }, 300)
-
-    // A trackpad keeps emitting momentum events after the card changes. Consume
-    // the rest of that gesture so it cannot scroll or switch the new card.
-    if (wheelSwitchedCard.current) {
-      event.preventDefault()
-      return
-    }
-
-    const scrollableCard = (event.target as HTMLElement).closest<HTMLElement>(".flashcard-scroll")
-    let atBoundary = true
-    let canScrollContent = false
-    if (scrollableCard) {
-      const atTop = scrollableCard.scrollTop <= 1
-      const atBottom = scrollableCard.scrollTop + scrollableCard.clientHeight >= scrollableCard.scrollHeight - 1
-      atBoundary = event.deltaY < 0 ? atTop : atBottom
-      canScrollContent = !atBoundary
-    }
-
-    if (isNewGesture) wheelStartedAtBoundary.current = atBoundary
-
-    if (canScrollContent) {
-      wheelDistance.current = 0
-      wheelStartedAtBoundary.current = false
-      return
-    }
-
-    if (!wheelStartedAtBoundary.current) {
-      event.preventDefault()
-      return
-    }
-
-    const canMove = event.deltaY > 0 ? page < notes.length - 1 : page > 0
-    if (!canMove) return
-    event.preventDefault()
-    wheelDistance.current += event.deltaY
-    if (Math.abs(wheelDistance.current) < 36) return
-    wheelSwitchedCard.current = true
-    goTo(page + (wheelDistance.current > 0 ? 1 : -1))
-    wheelDistance.current = 0
-  }
-
-  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.pointerType === "mouse" || event.pointerType === "touch" || (event.target as HTMLElement).closest("button, a, input")) return
-    pointerStart.current = event.clientY
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }
-
-  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
-    if (pointerStart.current === undefined) return
-    const distance = event.clientY - pointerStart.current
-    pointerStart.current = undefined
-    if (Math.abs(distance) < 52) return
-    goTo(page + (distance < 0 ? 1 : -1))
-  }
-
-  function handleTouchStart(event: ReactTouchEvent<HTMLDivElement>) {
-    if ((event.target as HTMLElement).closest("button, a, input")) return
-    const scrollableCard = (event.target as HTMLElement).closest<HTMLElement>(".flashcard-scroll")
-    touchStart.current = {
-      y: event.touches[0]?.clientY ?? 0,
-      atTop: !scrollableCard || scrollableCard.scrollTop <= 1,
-      atBottom: !scrollableCard || scrollableCard.scrollTop + scrollableCard.clientHeight >= scrollableCard.scrollHeight - 1,
-    }
-  }
-
-  function handleTouchEnd(event: ReactTouchEvent<HTMLDivElement>) {
-    const start = touchStart.current
-    touchStart.current = undefined
-    if (!start) return
-    const distance = (event.changedTouches[0]?.clientY ?? start.y) - start.y
-    if (distance < -52 && start.atBottom) goTo(page + 1)
-    if (distance > 52 && start.atTop) goTo(page - 1)
-  }
-
-  return (
-    <div className="flashcard-deck" aria-label="Language note viewer">
-      <div className="flashcard-viewer">
-        <div
-          className="flashcard-deck-stage"
-          role="group"
-          aria-roledescription="card viewer"
-          aria-label={`Card ${page + 1} of ${totalNotes}. Swipe, scroll, or use arrow keys to change cards.`}
-          onWheel={handleWheel}
-          onPointerDown={handlePointerDown}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={() => { pointerStart.current = undefined }}
-          onTouchStart={handleTouchStart}
-          onTouchEnd={handleTouchEnd}
-          onTouchCancel={() => { touchStart.current = undefined }}
-        >
-          {outgoingNote && (
-            <div key={outgoingNote.id} className="deck-outgoing-card" data-direction={direction} aria-hidden="true"
-              onAnimationEnd={(event) => { if (event.currentTarget === event.target) setOutgoingNote(undefined) }}>
-              <NoteFlashcard note={outgoingNote} onDelete={onDelete} quiz={quiz} revealed={revealedId === outgoingNote.id} />
-            </div>
-          )}
-          <div key={activeNote.id} className="deck-active-card" data-direction={direction}>
-            <NoteFlashcard note={activeNote} onDelete={onDelete} onReview={onReview} quiz={quiz}
-              revealed={revealedId === activeNote.id} onReveal={() => setRevealedId(activeNote.id)} />
-          </div>
-        </div>
-
-        <nav className="flashcard-controls" aria-label="Card navigation">
-          <Button variant="outline" onClick={() => goTo(page - 1)} disabled={page === 0} aria-label="Previous card">
-            <ArrowLeftIcon /> Previous
-          </Button>
-          <div className="flashcard-deck-status">
-            <span aria-live="polite">{String(page + 1).padStart(2, "0")} / {totalNotes}</span>
-            <span className="flashcard-progress" aria-hidden="true"><i style={{ width: `${Math.min(100, ((page + 1) / Math.max(1, totalNotes)) * 100)}%` }} /></span>
-            <span className="flashcard-keys" aria-hidden="true"><kbd>←</kbd><kbd>→</kbd>{quiz && <kbd>Space</kbd>}</span>
-          </div>
-          <Button variant="outline" onClick={() => goTo(page + 1)} disabled={page === notes.length - 1} aria-label="Next card">
-            Next <ArrowRightIcon />
-          </Button>
-        </nav>
-      </div>
-    </div>
   )
 }
 
@@ -648,6 +433,7 @@ export function FlashcardsPage({ data, loadingMore, onLoadMore, onDelete, onRevi
           <FlashcardDeck notes={data.notes} totalNotes={data.reviewSummary
             ? data.reviewSummary.due + data.reviewSummary.new + data.reviewSummary.scheduled : data.progress.totalNotes}
             hasMore={Boolean(data.notesPage?.hasMore)} loadingMore={loadingMore}
+            remaining={data.reviewSummary ? data.reviewSummary.due + data.reviewSummary.new : undefined}
             onLoadMore={onLoadMore} onDelete={onDelete} onReview={onReview} quiz={Boolean(onReview) && order === "review"} />
         ) : (
           <EmptyState icon={LayersIcon} title="No notes yet" body="Keep working with your coding agent. When a message has a correction worth keeping, it becomes a flash card here." />
