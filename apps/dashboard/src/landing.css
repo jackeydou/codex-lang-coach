@@ -116,8 +116,7 @@
 .demo-agent-tabs button:hover, .install-tabs button:hover { color: var(--ink); background: color-mix(in oklch, var(--card) 70%, transparent); }
 .demo-agent-tabs button[aria-selected="true"], .install-tabs button[aria-selected="true"] { background: var(--card); border-color: var(--rule); color: var(--ink); box-shadow: 0 1px 2px oklch(0.3 0.03 70 / 0.08); }
 .agent-glyph { width: 1rem; height: 1rem; flex: none; }
-[data-agent="claude"] > .agent-glyph { fill: oklch(0.66 0.14 40); }
-.lp-hero-kicker .agent-glyph:first-of-type { fill: oklch(0.66 0.14 40); }
+.agent-glyph[data-agent-glyph="claude"] { color: #d97757; }
 
 /* Agent window, shared */
 .agent-window {
@@ -347,7 +346,6 @@
 .install-tabs { display: flex; flex-wrap: wrap; gap: 0.375rem; }
 .install-tabs button { padding: 0.625rem 1.125rem; font-size: 0.9375rem; }
 .install-tabs .agent-glyph { width: 1.125rem; height: 1.125rem; }
-.install-tabs [data-agent="claude"] .agent-glyph { fill: oklch(0.66 0.14 40); }
 .install-panel { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--rule); border-radius: 16px; background: var(--card); animation: aw-reveal 320ms var(--ease-out) both; }
 .install-method { display: flex; min-width: 0; flex-direction: column; gap: 1.125rem; padding: clamp(1.25rem, 3vw, 2rem); }
 .install-method + .install-method { border-left: 1px solid var(--rule); }
