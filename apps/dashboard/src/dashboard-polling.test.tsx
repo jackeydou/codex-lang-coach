@@ -71,10 +71,15 @@ it("preserves the active reviewed card and original pagination through embedded 
     <DashboardApp embedded={{ client, openStandalone: async () => {} }} />
   </MemoryRouter>))
   const activeExpression = () => container.querySelector(".deck-active-card blockquote")?.textContent
+  expect(activeExpression()).toContain("Original 59")
+  // Grading needs the answer side; "Got it" saves the review and deals the next card.
+  expect(container.querySelector('button[data-action="got-it"]')).toBeNull()
+  await click('button[data-action="flip"]')
+  await click('button[data-action="got-it"]')
+  expect(notes.find((note) => note.id === "poll-59")?.review?.stage).toBe(1)
+  expect(container.querySelector(".deck-hud")?.textContent).toContain("1 reviewed")
   const originalExpression = activeExpression()
-  expect(originalExpression).toContain("Original 59")
-  await click(".deck-active-card .flashcard-review-action button")
-  expect(container.querySelector(".deck-active-card .flashcard-review-action")?.textContent).toContain("Reviewed")
+  expect(originalExpression).toContain("Original 58")
 
   notes = [{ ...notes[0]!, id: "added", originalExpression: "Added elsewhere", polishedExpression: "Added elsewhere", review: emptyReviewState() }, ...notes]
   await act(async () => {
@@ -97,7 +102,7 @@ it("preserves the active reviewed card and original pagination through embedded 
   expect(container.textContent).not.toContain("Added elsewhere")
 
   // Only the user's explicit refresh creates a new deck.
-  await click(".review-toolbar button")
+  await click('.review-toolbar button[aria-label="Refresh order"]')
   expect(getDashboard.mock.calls.filter(([cursor]) => !cursor)).toEqual([[undefined, "review"], [undefined, "review"]])
   expect(container.querySelector(".dashboard-page-count")?.textContent).toContain("61")
 })
